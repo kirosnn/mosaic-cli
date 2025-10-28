@@ -13,9 +13,7 @@ Current session:
  - Time: {{TIME}}
  - Working directory: {{CWD}}
 
----
-
-Avoid using markdown syntax such as backticks (\`) or code blocks (\`\`\`).`;
+---`;
 
 interface PlaceholderValues {
   DATE: string;
