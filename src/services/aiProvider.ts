@@ -64,6 +64,8 @@ export class AIProvider {
   private config: ProviderConfig;
   private apiKey?: string;
   private systemPrompt: string;
+  private readonly MAX_TOKENS = 16384;
+  private readonly TOKEN_RATIO = 4;
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -71,17 +73,49 @@ export class AIProvider {
     this.systemPrompt = loadSystemPrompt();
   }
 
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / this.TOKEN_RATIO);
+  }
+
+  private truncateMessages(messages: Message[], maxTokens: number): Message[] {
+    const systemMessage = messages.find(msg => msg.role === 'system');
+    const otherMessages = messages.filter(msg => msg.role !== 'system');
+
+    let totalTokens = systemMessage ? this.estimateTokens(systemMessage.content) : 0;
+    const keptMessages: Message[] = [];
+
+    for (let i = otherMessages.length - 1; i >= 0; i--) {
+      const msgTokens = this.estimateTokens(otherMessages[i].content);
+
+      if (totalTokens + msgTokens > maxTokens) {
+        break;
+      }
+
+      totalTokens += msgTokens;
+      keptMessages.unshift(otherMessages[i]);
+    }
+
+    if (systemMessage) {
+      return [systemMessage, ...keptMessages];
+    }
+
+    return keptMessages;
+  }
+
   private prepareMessages(messages: Message[]): Message[] {
     const hasSystemMessage = messages.some(msg => msg.role === 'system');
 
+    let preparedMessages: Message[];
     if (hasSystemMessage) {
-      return messages;
+      preparedMessages = messages;
+    } else {
+      preparedMessages = [
+        { role: 'system', content: this.systemPrompt },
+        ...messages
+      ];
     }
 
-    return [
-      { role: 'system', content: this.systemPrompt },
-      ...messages
-    ];
+    return this.truncateMessages(preparedMessages, this.MAX_TOKENS);
   }
 
   async sendMessage(messages: Message[]): Promise<AIResponse> {
@@ -159,7 +193,7 @@ export class AIProvider {
       },
       body: JSON.stringify({
         model: this.config.model,
-        max_tokens: 4096,
+        max_tokens: this.MAX_TOKENS,
         system: systemMessages.length > 0 ? systemMessages[0].content : undefined,
         messages: conversationMessages
       })

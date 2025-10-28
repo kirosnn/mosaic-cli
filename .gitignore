@@ -6,4 +6,4 @@ dist/
 coverage/
 .nyc_output/
 *.tsbuildinfo
-.claude/
+test.txt

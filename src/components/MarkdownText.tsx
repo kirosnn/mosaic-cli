@@ -115,7 +115,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         if (endIndex !== -1) {
           const code = text.substring(i + 1, endIndex);
           parts.push(
-            <Text key={`code-${i}`} backgroundColor="bgBlackBright" color={theme.colors.accent}>
+            <Text key={`code-${i}`} backgroundColor="black" color={theme.colors.accent}>
               {code}
             </Text>
           );

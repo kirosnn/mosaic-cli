@@ -18,7 +18,5 @@ export const shortcuts: Shortcut[] = [
 ];
 
 export const commands: Command[] = [
-  { name: '/help', description: 'Show help information', action: 'help' },
-  { name: '/settings', description: 'Open settings', action: 'settings' },
   { name: '/theme', description: 'Change theme', action: 'theme' },
 ];
