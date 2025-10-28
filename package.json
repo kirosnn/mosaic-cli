@@ -1,6 +1,6 @@
 {
   "name": "mosaic-cli",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "An AI-powered CLI code assistant",
   "type": "module",
   "main": "dist/index.js",
@@ -13,27 +13,23 @@
     "start": "node dist/index.js",
     "watch": "tsc --watch"
   },
-  "keywords": [
-    "cli",
-    "ai",
-    "code",
-    "assistant"
-  ],
-  "author": "",
+  "author": "kirosnn",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/react": "^19.2.2",
+    "@types/react": ">=19.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
+    "chalk": "^5.6.0",
     "ink": "^6.4.0",
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^3.0.0",
+    "ink-markdown": "^1.0.4",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
-    "react": "^19.2.0"
+    "marked": "^16.4.1",
+    "react": ">=19.0.0"
   }
 }
