@@ -199,7 +199,8 @@ export const searchCodeTool: Tool = {
 
             try {
               const content = await fs.readFile(fullPath, 'utf-8');
-              const lines = content.split('\n');
+              const safeContent = content || '';
+              const lines = safeContent.split('\n');
               const relativePath = path.relative(searchDir, fullPath);
               const directory = path.dirname(relativePath);
 

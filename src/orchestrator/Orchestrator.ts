@@ -6,13 +6,16 @@ import {
   ToolResult,
   OrchestratorConfig,
   ExecutionStep,
-  OrchestratorState
+  OrchestratorState,
+  OrchestratorEvent,
+  OrchestratorEventListener
 } from './types.js';
 import { ToolRegistry } from './tools/registry.js';
 import { AIProvider } from '../services/aiProvider.js';
 import { ProviderConfig } from '../config/providers.js';
 import { IntentionDetector } from './planning/IntentionDetector.js';
 import { TaskPlanner, ExecutionPlan } from './planning/TaskPlanner.js';
+import { buildOrchestratorSystemPrompt } from '../config/agentPrompts.js';
 
 export class Orchestrator {
   private agents: Map<string, Agent> = new Map();
@@ -22,6 +25,7 @@ export class Orchestrator {
   private state: OrchestratorState;
   private intentionDetector: IntentionDetector;
   private taskPlanner: TaskPlanner;
+  private eventListeners: OrchestratorEventListener[] = [];
 
   constructor(
     providerConfig: ProviderConfig,
@@ -62,6 +66,27 @@ export class Orchestrator {
 
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
+  }
+
+  on(listener: OrchestratorEventListener): void {
+    this.eventListeners.push(listener);
+  }
+
+  off(listener: OrchestratorEventListener): void {
+    const index = this.eventListeners.indexOf(listener);
+    if (index > -1) {
+      this.eventListeners.splice(index, 1);
+    }
+  }
+
+  private emit(event: OrchestratorEvent): void {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error('[Orchestrator] Error in event listener:', error);
+      }
+    }
   }
 
   async executeTaskWithPlanning(
@@ -129,12 +154,35 @@ export class Orchestrator {
     while (iteration < this.config.maxIterations) {
       iteration++;
 
+      this.emit({
+        type: 'iteration_start',
+        timestamp: new Date(),
+        data: { iteration, maxIterations: this.config.maxIterations }
+      });
+
+      this.emit({
+        type: 'ai_thinking',
+        timestamp: new Date(),
+        data: { message: 'Analyzing request and determining next action...' }
+      });
+
       const messages = this.prepareMessages(agent);
       const aiResponse = await this.aiProvider.sendMessage(messages);
 
       if (aiResponse.error) {
+        this.emit({
+          type: 'error',
+          timestamp: new Date(),
+          data: { error: aiResponse.error }
+        });
         throw new Error(`AI Provider error: ${aiResponse.error}`);
       }
+
+      this.emit({
+        type: 'ai_response',
+        timestamp: new Date(),
+        data: { content: aiResponse.content }
+      });
 
       const assistantMsg: Message = {
         role: 'assistant',
@@ -147,14 +195,31 @@ export class Orchestrator {
       const toolCalls = this.extractToolCalls(aiResponse.content);
 
       if (toolCalls.length === 0) {
+        this.emit({
+          type: 'final_response',
+          timestamp: new Date(),
+          data: { response: aiResponse.content }
+        });
         finalResponse = aiResponse.content;
         break;
       }
+
+      this.emit({
+        type: 'tool_call_detected',
+        timestamp: new Date(),
+        data: { count: toolCalls.length, tools: toolCalls.map(tc => tc.toolName) }
+      });
 
       for (const toolCall of toolCalls) {
         if (!agent.availableTools.includes(toolCall.toolName)) {
           continue;
         }
+
+        this.emit({
+          type: 'tool_executing',
+          timestamp: new Date(),
+          data: { toolName: toolCall.toolName, parameters: toolCall.parameters }
+        });
 
         const result = await this.toolRegistry.execute(
           toolCall.toolName,
@@ -162,6 +227,20 @@ export class Orchestrator {
           this.state.context,
           this.config.toolTimeout
         );
+
+        if (result.success) {
+          this.emit({
+            type: 'tool_success',
+            timestamp: new Date(),
+            data: { toolName: toolCall.toolName, result: result.data }
+          });
+        } else {
+          this.emit({
+            type: 'tool_error',
+            timestamp: new Date(),
+            data: { toolName: toolCall.toolName, error: result.error }
+          });
+        }
 
         toolsUsed.push(toolCall.toolName);
         this.state.toolResults.set(toolCall.id, result);
@@ -227,113 +306,100 @@ export class Orchestrator {
     }
 
     const { toolCall, toolResult } = msg;
-    let enriched = `## Tool Execution Result: ${toolCall.toolName}\n\n`;
-
-    enriched += `### Parameters Used:\n\`\`\`json\n${JSON.stringify(toolCall.parameters, null, 2)}\n\`\`\`\n\n`;
+    let enriched = `Tool "${toolCall.toolName}" executed with parameters:\n${JSON.stringify(toolCall.parameters, null, 2)}\n\n`;
 
     if (toolResult.success) {
-      enriched += `### Status: SUCCESS\n\n`;
-      enriched += `### Result Data:\n\`\`\`json\n${JSON.stringify(toolResult.data, null, 2)}\n\`\`\`\n\n`;
-
-      enriched += `### Next Actions:\n`;
-      enriched += `- Analyze what this result means for the user's goal\n`;
-      enriched += `- If you know all next steps, execute them NOW in one array response\n`;
-      enriched += `- Interpret and act on insights, don't just report data\n`;
+      enriched += `Result: SUCCESS\n${JSON.stringify(toolResult.data, null, 2)}\n\n`;
+      enriched += `Analyze this result and provide your response to the user. If you need more information, execute additional tools using the JSON format.`;
     } else {
-      enriched += `### Status: ERROR\n\n`;
-      enriched += `### Error Details:\n${toolResult.error}\n\n`;
-
-      enriched += `### Recovery:\n`;
-      enriched += `- Analyze why this failed and what it reveals\n`;
-      enriched += `- Try alternative approaches immediately\n`;
-      enriched += `- Use other tools to investigate or work around the issue\n`;
+      enriched += `Result: FAILED\nError: ${toolResult.error}\n\n`;
+      enriched += `The tool failed. Try alternative approaches using different tools or parameters.`;
     }
 
     if (toolResult.metadata && Object.keys(toolResult.metadata).length > 0) {
-      enriched += `\n### Additional Context:\n\`\`\`json\n${JSON.stringify(toolResult.metadata, null, 2)}\n\`\`\`\n`;
+      enriched += `\n\nAdditional context: ${JSON.stringify(toolResult.metadata, null, 2)}`;
     }
 
     return enriched;
   }
 
   private buildSystemPrompt(agent: Agent): string {
-    let prompt = agent.systemPrompt + '\n\n';
-
-    if (agent.availableTools.length > 0) {
-      prompt += 'You have access to the following tools:\n\n';
-
-      for (const toolName of agent.availableTools) {
-        const schema = this.toolRegistry.getToolSchema(toolName);
-        if (schema) {
-          prompt += `${JSON.stringify(schema, null, 2)}\n\n`;
-        }
-      }
-
-      prompt += `To use a tool, respond with a JSON object in this format:
-{
-  "tool": "tool_name",
-  "parameters": {
-    "param1": "value1",
-    "param2": "value2"
-  }
-}
-
-IMPORTANT: When you need to execute multiple tools to complete a task, use an array format to execute them ALL AT ONCE:
-[
-  {"tool": "tool_1", "parameters": {...}},
-  {"tool": "tool_2", "parameters": {...}},
-  {"tool": "tool_3", "parameters": {...}}
-]
-
-This allows you to complete tasks in one iteration instead of multiple back-and-forth exchanges.`;
-    }
-
-    return prompt;
+    const toolSchemas = agent.availableTools.map(toolName => this.toolRegistry.getToolSchema(toolName)).filter(Boolean);
+    return buildOrchestratorSystemPrompt(agent.systemPrompt, agent.availableTools, toolSchemas);
   }
 
   private extractToolCalls(response: string): ToolCall[] {
     const toolCalls: ToolCall[] = [];
 
     try {
-      const arrayMatch = response.match(/\[[\s\S]*"tool"[\s\S]*\]/);
-      if (arrayMatch) {
+      let jsonContent = response;
+
+      const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonContent = codeBlockMatch[1].trim();
+      }
+
+      const jsonArrayMatch = jsonContent.match(/\[\s*\{[\s\S]*?"tool"[\s\S]*?\}\s*\]/);
+      if (jsonArrayMatch) {
         try {
-          const parsed = JSON.parse(arrayMatch[0]);
+          const parsed = JSON.parse(jsonArrayMatch[0]);
           if (Array.isArray(parsed)) {
             for (const item of parsed) {
-              if (item.tool && item.parameters) {
+              if (item.tool && typeof item.tool === 'string') {
                 toolCalls.push({
                   toolName: item.tool,
-                  parameters: item.parameters,
+                  parameters: item.parameters || {},
                   id: this.generateToolCallId()
                 });
               }
             }
-            return toolCalls;
+            if (toolCalls.length > 0) {
+              return toolCalls;
+            }
           }
-        } catch {
+        } catch (e) {
+          console.error('[Orchestrator] Failed to parse tool array:', e);
         }
       }
 
-      const jsonMatch = response.match(/\{[\s\S]*"tool"[\s\S]*\}/g);
-
-      if (jsonMatch) {
-        for (const match of jsonMatch) {
+      const jsonObjectMatches = jsonContent.match(/\{[^{}]*"tool"[^{}]*"parameters"[^{}]*\}/g);
+      if (jsonObjectMatches) {
+        for (const match of jsonObjectMatches) {
           try {
             const parsed = JSON.parse(match);
-            if (parsed.tool && parsed.parameters) {
+            if (parsed.tool && typeof parsed.tool === 'string') {
               toolCalls.push({
                 toolName: parsed.tool,
-                parameters: parsed.parameters,
+                parameters: parsed.parameters || {},
                 id: this.generateToolCallId()
               });
             }
-          } catch {
+          } catch (e) {
             continue;
           }
         }
       }
-    } catch {
+
+      if (toolCalls.length === 0) {
+        const relaxedMatch = jsonContent.match(/\{\s*["']tool["']\s*:\s*["']([^"']+)["']\s*,\s*["']parameters["']\s*:\s*(\{[^}]*\})\s*\}/);
+        if (relaxedMatch) {
+          try {
+            const parsed = {
+              tool: relaxedMatch[1],
+              parameters: JSON.parse(relaxedMatch[2])
+            };
+            toolCalls.push({
+              toolName: parsed.tool,
+              parameters: parsed.parameters,
+              id: this.generateToolCallId()
+            });
+          } catch (e) {
+            console.error('[Orchestrator] Relaxed parsing failed:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Orchestrator] Tool extraction error:', e);
     }
 
     return toolCalls;

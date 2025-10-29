@@ -61,7 +61,7 @@ function getPlaceholderValues(): PlaceholderValues {
 
 function replacePlaceholders(content: string): string {
   const values = getPlaceholderValues();
-  let result = content;
+  let result = content || '';
 
   for (const [key, value] of Object.entries(values)) {
     const placeholder = `{{${key}}}`;

@@ -10,7 +10,8 @@ interface MarkdownTextProps {
 
 const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet = false }) => {
   const parseMarkdown = (text: string): React.ReactElement[] => {
-    const lines = text.split('\n');
+    const safeText = text || '';
+    const lines = safeText.split('\n');
     const elements: React.ReactElement[] = [];
 
     let inCodeBlock = false;

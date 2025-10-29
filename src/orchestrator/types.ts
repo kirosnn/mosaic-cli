@@ -76,3 +76,22 @@ export interface OrchestratorState {
   toolResults: Map<string, ToolResult>;
   context: AgentContext;
 }
+
+export type OrchestratorEventType =
+  | 'iteration_start'
+  | 'ai_thinking'
+  | 'ai_response'
+  | 'tool_call_detected'
+  | 'tool_executing'
+  | 'tool_success'
+  | 'tool_error'
+  | 'final_response'
+  | 'error';
+
+export interface OrchestratorEvent {
+  type: OrchestratorEventType;
+  timestamp: Date;
+  data?: any;
+}
+
+export type OrchestratorEventListener = (event: OrchestratorEvent) => void;

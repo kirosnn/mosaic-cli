@@ -17,31 +17,40 @@ export class IntentionDetector {
   }
 
   async analyzeIntent(userRequest: string, availableTools: string[]): Promise<IntentionAnalysis> {
-    const systemPrompt = `You are an AI assistant that analyzes user requests and determines the best approach to fulfill them.
+    const systemPrompt = `Analyze user requests to determine intent and required tools.
 
-Available tools: ${availableTools.join(', ')}
+## Response Format
 
-IMPORTANT: For requests involving code, files, or system functionality, you should ALWAYS include 'search_code' as the FIRST required tool to understand context before taking action.
+Respond with JSON only:
 
-Analyze the user's request and provide a JSON response with:
-- primaryIntent: A brief description of what the user wants
-- confidence: A number from 0 to 1 indicating your confidence
-- requiredTools: Array of tool names needed (only from available tools). If the request involves code/files, START with 'search_code'
-- suggestedApproach: A brief explanation of how to approach this task, emphasizing context-gathering first
-- complexity: Either "simple", "moderate", or "complex"
-- estimatedSteps: Number of steps you think this will take (include search steps)
-
-Example for "fix the login bug":
 {
-  "primaryIntent": "Fix authentication bug in login functionality",
+  "primaryIntent": "Clear description of the user's goal",
   "confidence": 0.8,
-  "requiredTools": ["search_code", "read_file", "write_file"],
-  "suggestedApproach": "First search for login/auth files, read relevant code, identify bug, then fix",
-  "complexity": "moderate",
-  "estimatedSteps": 4
+  "requiredTools": ["tool1", "tool2"],
+  "suggestedApproach": "Brief step-by-step plan",
+  "complexity": "simple|moderate|complex",
+  "estimatedSteps": 3
 }
 
-Respond ONLY with valid JSON, no additional text.`;
+## Guidelines
+
+1. For code/file operations: include search_code as first tool
+2. Select only tools that add value to completing the task
+3. Provide realistic confidence based on request clarity
+4. Keep suggestedApproach concise and actionable
+5. Respond in the same language as the user's request
+
+## Available Tools
+
+${availableTools.join(', ')}
+
+## Examples
+
+Request: "find authentication code"
+Response: {"primaryIntent": "Locate authentication implementation", "confidence": 0.9, "requiredTools": ["search_code"], "suggestedApproach": "Search for auth patterns and analyze found files", "complexity": "simple", "estimatedSteps": 2}
+
+Request: "fix login bug"
+Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0.8, "requiredTools": ["search_code", "read_file", "update_file"], "suggestedApproach": "Search login code, analyze implementation, identify and fix issues", "complexity": "moderate", "estimatedSteps": 4}`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },

@@ -1,6 +1,6 @@
 # Mosaic CLI
 
-Mosaic v0.0.2
+Mosaic v0.0.3
 
 A modern, AI-powered command-line assistant that brings the power of large language models directly to your terminal.
 

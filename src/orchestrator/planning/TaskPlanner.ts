@@ -1,5 +1,6 @@
 import { AIProvider, Message } from '../../services/aiProvider.js';
 import { IntentionAnalysis } from './IntentionDetector.js';
+import { buildTaskPlannerSystemPrompt } from '../../config/agentPrompts.js';
 
 export interface TaskStep {
   stepNumber: number;
@@ -29,75 +30,7 @@ export class TaskPlanner {
     intention: IntentionAnalysis,
     toolSchemas: object[]
   ): Promise<ExecutionPlan> {
-    const systemPrompt = `You are an expert task planning AI. Create a detailed, proactive execution plan to accomplish the user's request.
-
-Intention Analysis:
-- Primary Intent: ${intention.primaryIntent}
-- Complexity: ${intention.complexity}
-- Suggested Tools: ${intention.requiredTools.join(', ')}
-
-Available Tools:
-${JSON.stringify(toolSchemas, null, 2)}
-
-CRITICAL PLANNING PRINCIPLES:
-1. If the request involves code/files, ALWAYS start with search_code to understand context
-2. Include verification and quality check steps
-3. Plan for potential error scenarios
-4. Suggest proactive improvements where relevant
-5. Think beyond the minimum required steps
-
-Create a step-by-step plan as a JSON object with:
-- goal: The main objective
-- steps: Array of steps, each with:
-  - stepNumber: Sequential number
-  - description: What this step does (be specific and actionable)
-  - toolName: Tool to use (if applicable)
-  - parameters: Suggested parameters for the tool (be specific where possible)
-  - expectedOutput: What you expect to get
-  - dependsOn: Array of step numbers this depends on (optional)
-- totalSteps: Total number of steps
-- estimatedDuration: Rough time estimate (e.g., "30 seconds", "2 minutes")
-
-Example plan for "fix authentication bug":
-{
-  "goal": "Fix authentication bug in the system",
-  "steps": [
-    {
-      "stepNumber": 1,
-      "description": "Search for authentication-related code to understand the implementation",
-      "toolName": "search_code",
-      "parameters": {"pattern": "authentication|auth|login"},
-      "expectedOutput": "List of files containing auth logic"
-    },
-    {
-      "stepNumber": 2,
-      "description": "Read the main authentication file to identify the bug",
-      "toolName": "read_file",
-      "parameters": {},
-      "expectedOutput": "Authentication code to analyze",
-      "dependsOn": [1]
-    },
-    {
-      "stepNumber": 3,
-      "description": "Fix the identified bug in the authentication logic",
-      "toolName": "write_file",
-      "parameters": {},
-      "expectedOutput": "Updated file with fix applied",
-      "dependsOn": [2]
-    },
-    {
-      "stepNumber": 4,
-      "description": "Search for related test files to verify the fix",
-      "toolName": "search_code",
-      "parameters": {"pattern": "auth.*test|test.*auth"},
-      "expectedOutput": "Test files to run"
-    }
-  ],
-  "totalSteps": 4,
-  "estimatedDuration": "2 minutes"
-}
-
-Respond ONLY with valid JSON, no additional text.`;
+    const systemPrompt = buildTaskPlannerSystemPrompt(intention, toolSchemas);
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -153,7 +86,8 @@ Respond ONLY with valid JSON, no additional text.`;
 
         const descriptions: Record<string, string> = {
           'read_file': 'Read and analyze relevant file contents',
-          'write_file': 'Write or update file with changes',
+          'write_file': 'Create a file with content specified in the request',
+          'update_file': 'Update an existing file with new content',
           'list_directory': 'List directory contents to understand structure',
           'create_directory': 'Create necessary directory structure',
           'delete_file': 'Remove specified file',

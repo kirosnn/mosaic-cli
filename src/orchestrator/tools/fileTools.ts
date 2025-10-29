@@ -36,27 +36,45 @@ export const readFileTool: Tool = {
 
 export const writeFileTool: Tool = {
   name: 'write_file',
-  description: 'Write content to a file',
+  description: 'Create a new file with content. Should only be used for new files, not for modifying existing files.',
   parameters: [
     {
       name: 'path',
       type: 'string',
-      description: 'Path to the file to write',
+      description: 'Path to the new file to create',
       required: true
     },
     {
       name: 'content',
       type: 'string',
-      description: 'Content to write to the file',
+      description: 'Content to write to the new file',
       required: true
     }
   ],
   execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
     try {
+      if (!params.path || params.content === undefined) {
+        return {
+          success: false,
+          error: 'Missing required parameters: path and content are required'
+        };
+      }
+
       const filePath = path.resolve(context.workingDirectory, params.path);
+
+      try {
+        await fs.access(filePath);
+        return {
+          success: false,
+          error: 'File already exists. Use update_file tool to modify existing files.'
+        };
+      } catch {
+        // File doesn't exist, we can proceed
+      }
+
       await fs.writeFile(filePath, params.content, 'utf-8');
 
-      const lines = params.content.split('\n').length;
+      const lines = String(params.content || '').split('\n').length;
 
       return {
         success: true,
@@ -70,6 +88,70 @@ export const writeFileTool: Tool = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to write file'
+      };
+    }
+  }
+};
+
+export const updateFileTool: Tool = {
+  name: 'update_file',
+  description: 'Update specific lines in an existing file. Can modify multiple line ranges at once.',
+  parameters: [
+    {
+      name: 'path',
+      type: 'string',
+      description: 'Path to the file to update',
+      required: true
+    },
+    {
+      name: 'updates',
+      type: 'array',
+      description: 'Array of updates to apply. Each update contains startLine, endLine, and newContent',
+      required: true
+    }
+  ],
+  execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
+    try {
+      const filePath = path.resolve(context.workingDirectory, params.path);
+
+      const content = await fs.readFile(filePath, 'utf-8');
+      const lines = String(content || '').split('\n');
+
+      const updates = params.updates as Array<{
+        startLine: number;
+        endLine: number;
+        newContent: string;
+      }>;
+
+      updates.sort((a, b) => b.startLine - a.startLine);
+
+      for (const update of updates) {
+        if (update.startLine < 1 || update.endLine > lines.length) {
+          return {
+            success: false,
+            error: `Invalid line range: ${update.startLine}-${update.endLine}. File has ${lines.length} lines.`
+          };
+        }
+
+        const newLines = String(update.newContent || '').split('\n');
+        lines.splice(update.startLine - 1, update.endLine - update.startLine + 1, ...newLines);
+      }
+
+      const newContent = lines.join('\n');
+      await fs.writeFile(filePath, newContent, 'utf-8');
+
+      return {
+        success: true,
+        data: {
+          path: filePath,
+          updatesApplied: updates.length,
+          totalLines: lines.length
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update file'
       };
     }
   }
@@ -229,6 +311,7 @@ export const fileExistsTool: Tool = {
 export const allFileTools = [
   readFileTool,
   writeFileTool,
+  updateFileTool,
   listDirectoryTool,
   createDirectoryTool,
   deleteFileTool,

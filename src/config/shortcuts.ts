@@ -19,4 +19,5 @@ export const shortcuts: Shortcut[] = [
 
 export const commands: Command[] = [
   { name: '/theme', description: 'Change theme', action: 'theme' },
+  { name: '/verbose', description: 'Toggle verbose mode', action: 'verbose' },
 ];
