@@ -1,22 +1,23 @@
 # Mosaic CLI
 
-Mosaic v0.0.3
+Version 0.0.3
 
-A modern, AI-powered command-line assistant that brings the power of large language models directly to your terminal.
+Mosaic is a command-line interface for interacting with large language models directly from your terminal. It supports multiple AI providers and provides a straightforward way to integrate AI assistance into your workflow.
 
-## What is Mosaic?
+## Overview
 
-Mosaic is a sleek CLI tool that lets you chat with AI directly from your command line. Whether you need coding help, quick answers, or just want to brainstorm ideas, Mosaic makes it simple and fast.
+This tool allows you to have conversations with AI models without leaving your terminal. It's useful for getting quick answers, debugging code, generating text, or working with AI models as part of your development process.
 
-## Features
+The interface is text-based and designed to work in any terminal environment. Responses are formatted as markdown with syntax highlighting for code blocks.
 
-- **Multiple AI Providers**: Works with OpenAI, Anthropic, OpenRouter, Ollama, and custom providers
-- **Beautiful Terminal UI**: Clean, minimal interface built with Ink
-- **Markdown Support**: Responses render beautifully with proper formatting, code blocks, and syntax highlighting
-- **Customizable System Prompts**: Tailor the AI's behavior to your needs with a simple markdown file
-- **Smart Placeholders**: Auto-inject current date, time, user info, and more into your prompts
-- **Encrypted Secrets**: API keys are stored securely with encryption
-- **Multiple Themes**: Choose a theme that matches your style
+## Key Features
+
+- **Multiple Provider Support**: Connect to OpenAI, Anthropic, OpenRouter, Ollama, or any OpenAI-compatible API
+- **Terminal Interface**: Built with React and Ink for a responsive terminal UI
+- **Markdown Rendering**: Code blocks, lists, and formatting are properly displayed in the terminal
+- **Customizable System Prompts**: Define AI behavior using a markdown file with support for dynamic placeholders
+- **Secure Storage**: API keys are encrypted and stored locally
+- **Theme Support**: Several color schemes available to match your terminal preferences
 
 ## Installation
 
@@ -34,66 +35,73 @@ npm run build
 npm link
 ```
 
-## Quick Start
+## Getting Started
 
-1. Run Mosaic for the first time:
-   ```bash
-   mosaic
-   ```
+After installation, run:
 
-2. Follow the setup wizard to:
-   - Choose your theme
-   - Select your AI provider
-   - Configure your API key
+```bash
+mosaic
+```
 
-3. Start chatting!
+On first run, you'll be guided through a setup process:
+1. Select a color theme for the interface
+2. Choose your AI provider (OpenAI, Anthropic, etc.)
+3. Enter your API key
+
+Once configured, you can start sending messages to the AI model. Type your question or prompt and press Enter to receive a response.
 
 ## Configuration
 
-Mosaic stores its configuration in `~/.mosaic/`:
+Configuration files are stored in `~/.mosaic/`:
 
-- `config.json` - Main configuration file
-- `.secrets.json` - Encrypted API keys
-- `system-prompt.md` - Customizable system prompt
+- **config.json** - Main configuration (provider, model, theme settings)
+- **.secrets.json** - Encrypted API keys
+- **system-prompt.md** - System prompt template
 
-### Customizing the System Prompt
+### System Prompt Customization
 
-Edit `~/.mosaic/system-prompt.md` to customize how the AI behaves. You can use placeholders like:
+The system prompt defines how the AI responds to your messages. You can edit `~/.mosaic/system-prompt.md` to change the AI's behavior, tone, or focus.
+
+The prompt template supports dynamic placeholders that are replaced at runtime:
 
 - `{{DATE}}` - Current date
 - `{{TIME}}` - Current time
 - `{{USER}}` - Your username
-- `{{PLATFORM}}` - Your operating system
+- `{{PLATFORM}}` - Operating system
 - `{{CWD}}` - Current working directory
 
-And many more! Check the full list with `getAvailablePlaceholders()`.
+Additional placeholders are available for more advanced use cases.
 
 ## Supported Providers
 
 ### OpenAI
-Models: GPT-4o, GPT-4o-mini, GPT-5, and more
+Supports GPT-4o, GPT-4o-mini, GPT-5, and other OpenAI models. Requires an OpenAI API key.
 
 ### Anthropic
-Models: Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1
+Supports Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, and other Claude models. Requires an Anthropic API key.
 
 ### OpenRouter
-Access to various third-party models through a single API
+Provides access to various AI models through a single unified API. Requires an OpenRouter API key.
 
 ### Ollama
-Run models locally with Ollama
+For running models locally on your machine. Requires Ollama to be installed and running on your system.
 
-### Custom
-Bring your own OpenAI-compatible API endpoint
+### Custom Provider
+You can configure any OpenAI-compatible API endpoint. This is useful for self-hosted models or alternative providers that implement the OpenAI API specification.
 
 ## Keyboard Shortcuts
 
-- `?` - Show keyboard shortcuts
-- `/` - Show available commands
-- `Ctrl+C` (twice) - Exit
-- `Ctrl+L` - Clear conversation
-- `Ctrl+U` - Clear input
+While using Mosaic, the following keyboard shortcuts are available:
+
+- `?` - Display help for keyboard shortcuts
+- `/` - Show list of available commands
+- `Ctrl+C` (twice) - Exit the application
+- `Ctrl+L` - Clear the current conversation history
+- `Ctrl+U` - Clear the current input line
 
 ## Development
+
+To work on Mosaic locally:
 
 ```bash
 # Install dependencies
@@ -105,25 +113,23 @@ npm run build
 # Run in development mode
 npm run dev
 
-# Watch mode
+# Watch mode for automatic rebuilds
 npm run watch
 ```
 
-## Tech Stack
+## Technical Details
 
-- **React** + **Ink** - Terminal UI framework
-- **TypeScript** - Type safety
-- **Chalk** - Terminal styling
-- **Node.js** - Runtime
+This project is built with:
+
+- **React + Ink** - For building the terminal user interface
+- **TypeScript** - For type safety and better development experience
+- **Chalk** - For terminal text styling
+- **Node.js** - As the runtime environment
 
 ## Contributing
 
-Contributions are welcome! Feel free to open issues or submit pull requests.
+Contributions are welcome. If you find a bug or have a feature request, please open an issue on GitHub. Pull requests are also appreciated.
 
 ## License
 
 MIT © kirosnn
-
-## Acknowledgments
-
-Built with love for developers who live in the terminal.
