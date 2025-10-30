@@ -11,7 +11,7 @@ You are currently running on {{PLATFORM}}.
 Current session:
  - Date: {{DATE}}
  - Time: {{TIME}}
- - Working directory: {{CWD}}
+ - Working directory (Workspace): {{CWD}}
 
 ---`;
 
