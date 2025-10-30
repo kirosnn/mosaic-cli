@@ -1,6 +1,6 @@
 # Mosaic CLI
 
-Version 0.0.3
+Version 0.0.4
 
 Mosaic is a command-line interface for interacting with large language models directly from your terminal. It supports multiple AI providers and provides a straightforward way to integrate AI assistance into your workflow.
 

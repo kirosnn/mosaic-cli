@@ -13,7 +13,7 @@ const GlowingText: React.FC<GlowingTextProps> = ({ text, theme }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       setFrame((prev) => (prev + 1) % safeText.length);
-    }, 60);
+    }, 90);
     return () => clearInterval(interval);
   }, [safeText]);
 

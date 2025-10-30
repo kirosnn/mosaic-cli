@@ -15,7 +15,7 @@ import { AIProvider } from '../services/aiProvider.js';
 import { ProviderConfig } from '../config/providers.js';
 import { IntentionDetector } from './planning/IntentionDetector.js';
 import { TaskPlanner, ExecutionPlan } from './planning/TaskPlanner.js';
-import { buildOrchestratorSystemPrompt } from '../config/agentPrompts.js';
+import { buildOrchestratorSystemPrompt } from '../config/systemPrompt.js';
 
 export class Orchestrator {
   private agents: Map<string, Agent> = new Map();

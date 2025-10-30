@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { getThemeNames, getTheme, Theme } from '../config/themes.js';
 import { updateConfig } from '../config/index.js';
@@ -72,6 +72,12 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
     options: Array<{ value: string; label: string }>;
   }>;
 
+  useEffect(() => {
+    if (steps.length === 0) {
+      onComplete();
+    }
+  }, [steps.length]);
+
   useInput((input, key) => {
     if (showProviderSetup) return;
 
@@ -129,7 +135,6 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
   };
 
   if (steps.length === 0) {
-    onComplete();
     return null;
   }
 

@@ -1,6 +1,6 @@
 import { AIProvider, Message } from '../../services/aiProvider.js';
 import { IntentionAnalysis } from './IntentionDetector.js';
-import { buildTaskPlannerSystemPrompt } from '../../config/agentPrompts.js';
+import { buildTaskPlannerSystemPrompt } from '../../config/systemPrompt.js';
 
 export interface TaskStep {
   stepNumber: number;

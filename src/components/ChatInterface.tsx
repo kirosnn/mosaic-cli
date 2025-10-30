@@ -4,9 +4,6 @@ import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig } 
 import { shortcuts, commands } from '../config/shortcuts.js';
 import { Orchestrator, universalAgent, allTools } from '../orchestrator/index.js';
 import { ToolExecution, MessageWithTools } from '../types/toolExecution.js';
-import { ToolApprovalRequest, needsApproval } from '../types/toolApproval.js';
-import { formatToolName, formatToolResult, formatToolParameters } from '../utils/toolFormatters.js';
-import { generateToolPreview } from '../utils/diffFormatter.js';
 import ChatHeader from './ChatHeader.js';
 import MessageList from './MessageList.js';
 import ChatInput from './ChatInput.js';
@@ -14,7 +11,9 @@ import DropdownMenu from './DropdownMenu.js';
 import GlowingText from './GlowingText.js';
 import ToolExecutionList from './ToolExecutionList.js';
 import ToolApprovalPrompt from './ToolApprovalPrompt.js';
+import LoadingStatus from './LoadingStatus.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
+import { useToolApproval } from '../hooks/useToolApproval.js';
 import { historyService } from '../services/historyService.js';
 import { VerboseLogger } from '../utils/VerboseLogger.js';
 
@@ -33,10 +32,27 @@ const ChatInterface: React.FC = () => {
   const [currentToolExecutions, setCurrentToolExecutions] = useState<ToolExecution[]>([]);
   const [currentThemeName, setCurrentThemeName] = useState<string>('default');
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null);
   const [verboseMode, setVerboseMode] = useState<boolean>(false);
+  const [tokenCount, setTokenCount] = useState<number>(0);
   const executingCommand = useRef(false);
   const verboseLogger = useRef(new VerboseLogger(false));
+
+  const { pendingApproval, wrapToolExecution } = useToolApproval({
+    onToolStart: (tool) => {
+      setCurrentToolExecutions(prev => [...prev, tool]);
+    },
+    onToolComplete: (tool) => {
+      setCurrentToolExecutions(prev => {
+        const index = prev.findIndex(t => t.name === tool.name && t.status === 'running');
+        if (index !== -1) {
+          const updated = [...prev];
+          updated[index] = tool;
+          return updated;
+        }
+        return prev;
+      });
+    }
+  });
 
   const config = loadConfig();
   const provider = config.provider;
@@ -95,17 +111,9 @@ const ChatInterface: React.FC = () => {
     }
   }, [input, showShortcuts, showCommands]);
 
-  useInput((inputChar, key) => {
-    if (pendingApproval) {
-      if (inputChar === 'y' || inputChar === 'Y') {
-        pendingApproval.onApprove();
-        setPendingApproval(null);
-      } else if (inputChar === 'n' || inputChar === 'N' || key.escape) {
-        pendingApproval.onReject();
-        setPendingApproval(null);
-      }
-    }
-  });
+  const estimateTokens = (text: string): number => {
+    return Math.ceil(text.length / 4);
+  };
 
   const handleCommandExecution = (action: string) => {
     executingCommand.current = true;
@@ -148,6 +156,7 @@ const ChatInterface: React.FC = () => {
     themeNames,
     onClearMessages: () => {
       setMessages([]);
+      setTokenCount(0);
       if (orchestrator) {
         orchestrator.resetContext();
       }
@@ -175,6 +184,9 @@ const ChatInterface: React.FC = () => {
       setInput('');
       resetExitState();
 
+      const userTokens = estimateTokens(trimmedValue);
+      setTokenCount(prev => prev + userTokens);
+
       if (!orchestrator) {
         const errorMessage: MessageWithTools = {
           role: 'assistant',
@@ -192,75 +204,14 @@ const ChatInterface: React.FC = () => {
         const originalExecute = toolRegistry.execute.bind(toolRegistry);
         const executedTools: ToolExecution[] = [];
 
-        toolRegistry.execute = async (toolName: string, parameters: Record<string, any>, context: any, timeout?: number) => {
-          const displayName = formatToolName(toolName);
-
-          const newTool: ToolExecution = {
-            name: toolName,
-            displayName: displayName,
-            status: 'running',
-            parameters: parameters
-          };
-
-          executedTools.push(newTool);
-          setCurrentToolExecutions([...executedTools]);
-
-          if (needsApproval(toolName)) {
-            const preview = await generateToolPreview(toolName, parameters);
-
-            const approved = await new Promise<boolean>((resolve) => {
-              const approvalRequest: ToolApprovalRequest = {
-                toolName,
-                parameters,
-                preview,
-                onApprove: () => resolve(true),
-                onReject: () => resolve(false)
-              };
-              setPendingApproval(approvalRequest);
-            });
-
-            if (!approved) {
-              const toolIndex = executedTools.findIndex(
-                tool => tool.name === toolName && tool.status === 'running'
-              );
-
-              if (toolIndex !== -1) {
-                executedTools[toolIndex] = {
-                  ...executedTools[toolIndex],
-                  status: 'error',
-                  result: 'Rejected by user'
-                };
-                setCurrentToolExecutions([...executedTools]);
-              }
-
-              return {
-                success: false,
-                error: 'Tool execution rejected by user'
-              };
-            }
-          }
-
-          const result = await originalExecute(toolName, parameters, context, timeout);
-
-          const toolIndex = executedTools.findIndex(
-            tool => tool.name === toolName && tool.status === 'running'
-          );
-
-          if (toolIndex !== -1) {
-            executedTools[toolIndex] = {
-              ...executedTools[toolIndex],
-              status: result.success ? 'completed' : 'error',
-              result: formatToolResult(toolName, result.data || result.error, parameters)
-            };
-            setCurrentToolExecutions([...executedTools]);
-          }
-
-          return result;
-        };
+        toolRegistry.execute = wrapToolExecution(originalExecute, executedTools);
 
         const result = await orchestrator.executeTaskWithPlanning(value.trim());
 
         toolRegistry.execute = originalExecute;
+
+        const assistantTokens = estimateTokens(result.response);
+        setTokenCount(prev => prev + assistantTokens);
 
         const assistantMessage: MessageWithTools = {
           role: 'assistant',
@@ -386,9 +337,7 @@ const ChatInterface: React.FC = () => {
         )}
 
         {isLoading && currentToolExecutions.length === 0 && !pendingApproval && (
-          <Box marginBottom={1} paddingLeft={2}>
-            <GlowingText theme={theme} text="Agent is thinking and planning..." />
-          </Box>
+          <LoadingStatus theme={theme} tokenCount={tokenCount} />
         )}
       </Box>
 

@@ -1,5 +1,5 @@
 import { Agent } from '../types.js';
-import { buildUniversalAgentSystemPrompt } from '../../config/agentPrompts.js';
+import { buildUniversalAgentSystemPrompt } from '../../config/systemPrompt.js';
 
 export const universalAgent: Agent = {
   id: 'universal_agent',
