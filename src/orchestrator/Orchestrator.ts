@@ -167,7 +167,33 @@ export class Orchestrator {
       });
 
       const messages = this.prepareMessages(agent);
-      const aiResponse = await this.aiProvider.sendMessage(messages);
+      this.emit({
+        type: 'ai_stream_start',
+        timestamp: new Date(),
+        data: { iteration }
+      });
+      let accumulated = '';
+      const aiResponse = await this.aiProvider.sendMessageStream(messages, (delta: string) => {
+        accumulated += delta;
+        this.emit({
+          type: 'ai_stream_delta',
+          timestamp: new Date(),
+          data: { delta }
+        });
+      });
+      if (!aiResponse.error) {
+        this.emit({
+          type: 'ai_stream_complete',
+          timestamp: new Date(),
+          data: { content: accumulated }
+        });
+      } else {
+        this.emit({
+          type: 'ai_stream_error',
+          timestamp: new Date(),
+          data: { error: aiResponse.error }
+        });
+      }
 
       if (aiResponse.error) {
         this.emit({
@@ -178,29 +204,30 @@ export class Orchestrator {
         throw new Error(`AI Provider error: ${aiResponse.error}`);
       }
 
+      const finalContent = aiResponse.content || accumulated;
       this.emit({
         type: 'ai_response',
         timestamp: new Date(),
-        data: { content: aiResponse.content }
+        data: { content: finalContent }
       });
 
       const assistantMsg: Message = {
         role: 'assistant',
-        content: aiResponse.content,
+        content: finalContent,
         timestamp: new Date()
       };
 
       this.state.context.conversationHistory.push(assistantMsg);
 
-      const toolCalls = this.extractToolCalls(aiResponse.content);
+      const toolCalls = this.extractToolCalls(finalContent);
 
       if (toolCalls.length === 0) {
         this.emit({
           type: 'final_response',
           timestamp: new Date(),
-          data: { response: aiResponse.content }
+          data: { response: finalContent }
         });
-        finalResponse = aiResponse.content;
+        finalResponse = finalContent;
         break;
       }
 

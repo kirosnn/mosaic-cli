@@ -13,7 +13,6 @@ interface UseToolApprovalOptions {
 export function useToolApproval(options: UseToolApprovalOptions = {}) {
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null);
 
-  // Handle keyboard input for approval
   useInput((inputChar, key) => {
     if (pendingApproval) {
       if (inputChar === 'y' || inputChar === 'Y') {
@@ -26,9 +25,6 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
     }
   });
 
-  /**
-   * Wraps a tool registry execute function to add approval flow
-   */
   const wrapToolExecution = useCallback((
     originalExecute: (toolName: string, parameters: Record<string, any>, context: any, timeout?: number) => Promise<any>,
     executedTools: ToolExecution[]
@@ -36,7 +32,6 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
     return async (toolName: string, parameters: Record<string, any>, context: any, timeout?: number) => {
       const displayName = formatToolName(toolName);
 
-      // Create tool execution entry
       const newTool: ToolExecution = {
         name: toolName,
         displayName: displayName,
@@ -47,7 +42,6 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
       executedTools.push(newTool);
       options.onToolStart?.(newTool);
 
-      // Check if approval is needed
       if (needsApproval(toolName)) {
         const preview = await generateToolPreview(toolName, parameters);
 
@@ -63,7 +57,6 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
         });
 
         if (!approved) {
-          // Update tool status to error
           const toolIndex = executedTools.findIndex(
             tool => tool.name === toolName && tool.status === 'running'
           );
@@ -84,10 +77,8 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
         }
       }
 
-      // Execute the tool
       const result = await originalExecute(toolName, parameters, context, timeout);
 
-      // Update tool status
       const toolIndex = executedTools.findIndex(
         tool => tool.name === toolName && tool.status === 'running'
       );

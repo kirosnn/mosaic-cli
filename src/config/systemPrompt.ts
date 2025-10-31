@@ -89,6 +89,7 @@ You: [
 
 ## Available Capabilities
 
+- Workspace exploration and project analysis
 - File reading and writing
 - Code search and analysis
 - Directory management
@@ -229,8 +230,6 @@ export function previewPlaceholders(): Record<string, string> {
 
   return result;
 }
-
-// ===== Orchestrator and Agent System Prompts =====
 
 export function buildOrchestratorSystemPrompt(agentSystemPrompt: string, availableTools: string[], toolSchemas: any[]): string {
   let prompt = agentSystemPrompt + '\n\n';

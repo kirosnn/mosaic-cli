@@ -1,4 +1,4 @@
-export type ProviderType = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
+export type ProviderType = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'xai' | 'mistral' | 'custom';
 
 export interface ProviderConfig {
   type: ProviderType;
@@ -51,6 +51,29 @@ export const PROVIDERS: Record<ProviderType, ProviderOption> = {
       'moonshotai/kimi-k2:free',
       'google/gemini-pro-1.5',
       'meta-llama/llama-3.1-70b-instruct',
+    ],
+    requiresApiKey: true,
+    requiresBaseUrl: false,
+  },
+  xai: {
+    type: 'xai',
+    name: 'xAI',
+    defaultModels: [
+      'grok-beta',
+      'grok-vision-beta',
+    ],
+    requiresApiKey: true,
+    requiresBaseUrl: false,
+  },
+  mistral: {
+    type: 'mistral',
+    name: 'Mistral AI',
+    defaultModels: [
+      'mistral-large-latest',
+      'mistral-medium-latest',
+      'mistral-small-latest',
+      'codestral-latest',
+      'mistral-embed',
     ],
     requiresApiKey: true,
     requiresBaseUrl: false,

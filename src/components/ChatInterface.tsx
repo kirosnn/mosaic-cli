@@ -36,6 +36,8 @@ const ChatInterface: React.FC = () => {
   const [tokenCount, setTokenCount] = useState<number>(0);
   const executingCommand = useRef(false);
   const verboseLogger = useRef(new VerboseLogger(false));
+  const streamingIndex = useRef<number | null>(null);
+  const isStreaming = useRef<boolean>(false);
 
   const { pendingApproval, wrapToolExecution } = useToolApproval({
     onToolStart: (tool) => {
@@ -80,6 +82,45 @@ const ChatInterface: React.FC = () => {
 
     orch.on((event) => {
       verboseLogger.current.log(event);
+
+      if (event.type === 'ai_stream_start') {
+        isStreaming.current = true;
+        if (streamingIndex.current === null) {
+          setMessages(prev => {
+            const idx = prev.length;
+            streamingIndex.current = idx;
+            return [...prev, { role: 'assistant', content: '' }];
+          });
+        } else {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = streamingIndex.current!;
+            if (updated[idx] && updated[idx].role === 'assistant') {
+              updated[idx] = { role: 'assistant', content: '' };
+            }
+            return updated;
+          });
+        }
+      } else if (event.type === 'ai_stream_delta') {
+        const delta = typeof event.data?.delta === 'string' ? event.data.delta : '';
+        if (delta.length === 0) return;
+        if (streamingIndex.current === null) return;
+
+        setMessages(prev => {
+          const updated = [...prev];
+          const idx = streamingIndex.current!;
+          const msg = updated[idx];
+          if (msg && msg.role === 'assistant') {
+            updated[idx] = { ...msg, content: (msg.content || '') + delta } as any;
+          }
+          return updated;
+        });
+        setTokenCount(prev => prev + estimateTokens(delta));
+      } else if (event.type === 'ai_stream_error') {
+        isStreaming.current = false;
+      } else if (event.type === 'final_response') {
+        isStreaming.current = false;
+      }
     });
 
     return orch;
@@ -179,8 +220,9 @@ const ChatInterface: React.FC = () => {
       setHistoryIndex(-1);
 
       const userMessage: MessageWithTools = { role: 'user', content: trimmedValue };
-      const newMessages = [...messages, userMessage];
-      setMessages(newMessages);
+      setMessages(prev => [...prev, userMessage]);
+      setTokenCount(estimateTokens(trimmedValue));
+      setIsLoading(true);
       setInput('');
       resetExitState();
 
@@ -192,7 +234,8 @@ const ChatInterface: React.FC = () => {
           role: 'assistant',
           content: 'Error: AI orchestrator not initialized properly'
         };
-        setMessages([...newMessages, errorMessage]);
+        setMessages(prev => [...prev, errorMessage]);
+        setIsLoading(false);
         return;
       }
 
@@ -210,15 +253,30 @@ const ChatInterface: React.FC = () => {
 
         toolRegistry.execute = originalExecute;
 
-        const assistantTokens = estimateTokens(result.response);
-        setTokenCount(prev => prev + assistantTokens);
+        const capturedStreamingIndex = streamingIndex.current;
 
-        const assistantMessage: MessageWithTools = {
-          role: 'assistant',
-          content: result.response,
-          toolExecutions: executedTools.length > 0 ? [...executedTools] : undefined
-        };
-        setMessages([...newMessages, assistantMessage]);
+        setMessages(prev => {
+          if (capturedStreamingIndex !== null && capturedStreamingIndex < prev.length) {
+            const updated = [...prev];
+            const idx = capturedStreamingIndex;
+            const msg = updated[idx] as MessageWithTools;
+            if (msg && msg.role === 'assistant') {
+              updated[idx] = {
+                ...msg,
+                content: result.response,
+                toolExecutions: executedTools.length > 0 ? [...executedTools] : undefined
+              } as MessageWithTools;
+            }
+            return updated;
+          }
+
+          const fallbackAssistant: MessageWithTools = {
+            role: 'assistant',
+            content: result.response,
+            toolExecutions: executedTools.length > 0 ? [...executedTools] : undefined
+          };
+          return [...prev, fallbackAssistant];
+        });
         setCurrentToolExecutions([]);
 
       } catch (error) {
@@ -226,15 +284,36 @@ const ChatInterface: React.FC = () => {
           ? [...currentToolExecutions]
           : [];
 
-        const errorMessage: MessageWithTools = {
-          role: 'assistant',
-          content: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
-          toolExecutions: executedTools.length > 0 ? executedTools : undefined
-        };
-        setMessages([...newMessages, errorMessage]);
+        const capturedStreamingIndex = streamingIndex.current;
+        const errorText = `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`;
+
+        setMessages(prev => {
+          if (capturedStreamingIndex !== null && capturedStreamingIndex < prev.length) {
+            const updated = [...prev];
+            const idx = capturedStreamingIndex;
+            const msg = updated[idx] as MessageWithTools;
+            if (msg && msg.role === 'assistant') {
+              updated[idx] = {
+                ...msg,
+                content: msg.content || errorText,
+                toolExecutions: executedTools.length > 0 ? executedTools : undefined
+              } as MessageWithTools;
+            }
+            return updated;
+          }
+
+          const errorMessage: MessageWithTools = {
+            role: 'assistant',
+            content: errorText,
+            toolExecutions: executedTools.length > 0 ? executedTools : undefined
+          };
+          return [...prev, errorMessage];
+        });
         setCurrentToolExecutions([]);
       } finally {
         setIsLoading(false);
+        streamingIndex.current = null;
+        isStreaming.current = false;
       }
     }
   };

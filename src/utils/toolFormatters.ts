@@ -10,7 +10,8 @@ export const formatToolName = (toolName: string): string => {
     'execute_shell': 'Shell',
     'execute_node': 'Node',
     'search_code': 'Search',
-    'install_package': 'Install'
+    'install_package': 'Install',
+    'explore_workspace': 'Explore'
   };
 
   return nameMap[toolName] || toolName;

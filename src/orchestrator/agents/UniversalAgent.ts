@@ -7,6 +7,7 @@ export const universalAgent: Agent = {
   description: 'An intelligent agent that can handle any task by analyzing intent and planning execution',
   systemPrompt: buildUniversalAgentSystemPrompt(),
   availableTools: [
+    'explore_workspace',
     'read_file',
     'write_file',
     'update_file',
