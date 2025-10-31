@@ -64,9 +64,20 @@ export class TaskPlanner {
     const steps: TaskStep[] = [];
     let stepNumber = 1;
 
+    const hasExplore = intention.requiredTools.includes('explore_workspace');
     const hasSearchCode = intention.requiredTools.includes('search_code');
     const needsCodeContext = intention.suggestedApproach.toLowerCase().includes('search') ||
                               intention.suggestedApproach.toLowerCase().includes('context');
+
+    if (hasExplore) {
+      steps.push({
+        stepNumber: stepNumber++,
+        description: 'Explore workspace to understand project structure and key files',
+        toolName: 'explore_workspace',
+        parameters: {},
+        expectedOutput: 'Workspace summary with structure and file previews'
+      });
+    }
 
     if (hasSearchCode && needsCodeContext) {
       steps.push({
@@ -83,6 +94,9 @@ export class TaskPlanner {
         if (tool === 'search_code' && steps.some(s => s.toolName === 'search_code')) {
           return;
         }
+        if (tool === 'explore_workspace' && steps.some(s => s.toolName === 'explore_workspace')) {
+          return;
+        }
 
         const descriptions: Record<string, string> = {
           'read_file': 'Read and analyze relevant file contents',
@@ -95,7 +109,8 @@ export class TaskPlanner {
           'execute_shell': 'Execute shell command to accomplish task',
           'execute_node': 'Execute Node.js code for processing',
           'search_code': 'Search codebase for relevant code',
-          'install_package': 'Install required npm package'
+          'install_package': 'Install required npm package',
+          'explore_workspace': 'Explore workspace to build context'
         };
 
         steps.push({

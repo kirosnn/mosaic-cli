@@ -123,6 +123,110 @@ async function getDirectoryStructure(
   }
 }
 
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readFilePreview(absolutePath: string, maxPreviewLines: number): Promise<{ path: string; size: number; linesRead: number; preview: string } | null> {
+  try {
+    const content = await fs.readFile(absolutePath, 'utf-8');
+    const safe = content || '';
+    const lines = safe.split('\n');
+    const previewLines = lines.slice(0, Math.max(0, maxPreviewLines));
+    const stats = await fs.stat(absolutePath);
+    return {
+      path: absolutePath,
+      size: stats.size,
+      linesRead: previewLines.length,
+      preview: previewLines.join('\n')
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function chooseFilesToRead(workingDir: string, maxFiles: number): Promise<string[]> {
+  const candidates = [
+    'README.md',
+    'CONTRIBUTING.md',
+    'LICENSE',
+    'package.json',
+    'tsconfig.json',
+    'jsconfig.json',
+    '.eslintrc',
+    '.prettierrc',
+    '.prettier.config.js',
+    'vite.config.ts',
+    'vite.config.js',
+    'webpack.config.js',
+    'rollup.config.js',
+    'babel.config.js',
+    'Dockerfile',
+    'docker-compose.yml',
+    'compose.yaml',
+    '.env',
+    '.env.local',
+    '.env.development',
+    '.env.production'
+  ];
+
+  const srcCandidates = [
+    'src/index.ts',
+    'src/index.tsx',
+    'src/main.ts',
+    'src/main.tsx',
+    'src/app.ts',
+    'src/app.tsx',
+    'src/server.ts',
+    'src/server.js',
+    'src/router.ts',
+    'src/routes.ts',
+    'src/pages/_app.tsx',
+    'src/app/layout.tsx',
+    'src/app/page.tsx',
+    'src/pages/index.tsx',
+    'src/pages/api/hello.ts'
+  ];
+
+  const resolved: string[] = [];
+
+  for (const rel of candidates) {
+    const abs = path.join(workingDir, rel);
+    if (await pathExists(abs)) {
+      resolved.push(abs);
+      if (resolved.length >= maxFiles) return resolved;
+    }
+  }
+
+  for (const rel of srcCandidates) {
+    const abs = path.join(workingDir, rel);
+    if (await pathExists(abs)) {
+      resolved.push(abs);
+      if (resolved.length >= maxFiles) return resolved;
+    }
+  }
+
+  try {
+    const entries = await fs.readdir(path.join(workingDir, 'src'), { withFileTypes: true });
+    for (const entry of entries) {
+      if (resolved.length >= maxFiles) break;
+      if (entry.isFile() && /\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+        const abs = path.join(workingDir, 'src', entry.name);
+        if (await pathExists(abs)) {
+          resolved.push(abs);
+        }
+      }
+    }
+  } catch {}
+
+  return resolved.slice(0, maxFiles);
+}
+
 async function analyzeProject(workingDir: string): Promise<ProjectAnalysis> {
   const analysis: ProjectAnalysis = {
     projectType: [],
@@ -160,6 +264,23 @@ async function analyzeProject(workingDir: string): Promise<ProjectAnalysis> {
               if (!analysis.projectType.includes(type)) {
                 analysis.projectType.push(type);
               }
+            }
+          }
+
+          const fwMap: Record<string, string[]> = {
+            'React': ['react'],
+            'Next.js': ['next'],
+            'Vue': ['vue'],
+            'Angular': ['@angular/core'],
+            'Svelte': ['svelte'],
+            'Express': ['express'],
+            'NestJS': ['@nestjs/core', 'nest'],
+            'Fastify': ['fastify'],
+            'Koa': ['koa']
+          };
+          for (const [fw, keys] of Object.entries(fwMap)) {
+            if (keys.some(k => k in allDeps)) {
+              if (!analysis.frameworks.includes(fw)) analysis.frameworks.push(fw);
             }
           }
 
@@ -302,6 +423,20 @@ function formatDirectoryTree(structures: FileStructure[], prefix: string = '', i
   return output;
 }
 
+function formatFilePreviews(previews: Array<{ path: string; size: number; linesRead: number; preview: string }>): string {
+  if (!previews || previews.length === 0) return '';
+  let output = 'FILE PREVIEWS\n';
+  output += '='.repeat(50) + '\n\n';
+  for (const p of previews) {
+    const rel = p.path;
+    const sizeKB = (p.size / 1024).toFixed(1);
+    output += `${rel} (${sizeKB} KB, ${p.linesRead} lines)\n`;
+    output += '-'.repeat(50) + '\n';
+    output += p.preview + '\n\n';
+  }
+  return output;
+}
+
 export const exploreWorkspaceTool: Tool = {
   name: 'explore_workspace',
   description: 'Explore and analyze the workspace structure. Provides a comprehensive overview of the project including file structure, project type, languages, dependencies, and configuration. This is the ideal tool to understand a new codebase or workspace.',
@@ -319,12 +454,36 @@ export const exploreWorkspaceTool: Tool = {
       description: 'Include detailed project analysis (default: true)',
       required: false,
       default: true
+    },
+    {
+      name: 'includeFilePreviews',
+      type: 'boolean',
+      description: 'Read and include previews of important files (default: true)',
+      required: false,
+      default: true
+    },
+    {
+      name: 'maxFiles',
+      type: 'number',
+      description: 'Maximum number of files to preview (default: 8)',
+      required: false,
+      default: 8
+    },
+    {
+      name: 'maxPreviewLines',
+      type: 'number',
+      description: 'Maximum lines per file preview (default: 30)',
+      required: false,
+      default: 30
     }
   ],
   execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
     try {
       const maxDepth = params.maxDepth || 3;
       const includeAnalysis = params.includeAnalysis !== false;
+      const includeFilePreviews = params.includeFilePreviews !== false;
+      const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 8;
+      const maxPreviewLines = typeof params.maxPreviewLines === 'number' ? params.maxPreviewLines : 30;
 
       let output = '';
 
@@ -349,12 +508,25 @@ export const exploreWorkspaceTool: Tool = {
 
       output += formatDirectoryTree(structure);
 
+      let previews: Array<{ path: string; size: number; linesRead: number; preview: string }> = [];
+      if (includeFilePreviews) {
+        const toRead = await chooseFilesToRead(context.workingDirectory, maxFiles);
+        for (const abs of toRead) {
+          const p = await readFilePreview(abs, maxPreviewLines);
+          if (p) previews.push(p);
+        }
+        if (previews.length > 0) {
+          output += '\n' + formatFilePreviews(previews);
+        }
+      }
+
       return {
         success: true,
         data: {
           workingDirectory: context.workingDirectory,
           structure,
-          summary: output
+          summary: output,
+          filePreviews: previews
         }
       };
     } catch (error) {

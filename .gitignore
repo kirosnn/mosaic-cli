@@ -6,4 +6,3 @@ dist/
 coverage/
 .nyc_output/
 *.tsbuildinfo
-test.txt

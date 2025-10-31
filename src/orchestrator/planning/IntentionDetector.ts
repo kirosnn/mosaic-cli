@@ -34,7 +34,7 @@ Respond with JSON only:
 
 ## Guidelines
 
-1. For code/file operations: include search_code as first tool
+1. For workspace/code/file operations: include explore_workspace first, then search_code
 2. Select only tools that add value to completing the task
 3. Provide realistic confidence based on request clarity
 4. Keep suggestedApproach concise and actionable
@@ -98,6 +98,23 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       lowerRequest.includes('change') ||
       lowerRequest.includes('update');
 
+    const needsWorkspaceUnderstanding =
+      lowerRequest.includes('workspace') ||
+      lowerRequest.includes('project') ||
+      lowerRequest.includes('codebase') ||
+      lowerRequest.includes('repository') ||
+      lowerRequest.includes('repo') ||
+      lowerRequest.includes('analyse') ||
+      lowerRequest.includes('analyze') ||
+      lowerRequest.includes('understand') ||
+      lowerRequest.includes('explore') ||
+      lowerRequest.includes('structure') ||
+      lowerRequest.includes('overview');
+
+    if ((needsWorkspaceUnderstanding || needsCodeContext) && availableTools.includes('explore_workspace')) {
+      requiredTools.push('explore_workspace');
+    }
+
     if (needsCodeContext && availableTools.includes('search_code')) {
       requiredTools.push('search_code');
     }
@@ -108,7 +125,7 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       }
       requiredTools.push('read_file', 'write_file', 'file_exists');
     }
-    if (lowerRequest.includes('directory') || lowerRequest.includes('folder')) {
+    if (lowerRequest.includes('directory') || lowerRequest.includes('folder') || needsWorkspaceUnderstanding) {
       requiredTools.push('list_directory', 'create_directory');
     }
     if (lowerRequest.includes('execute') || lowerRequest.includes('run') || lowerRequest.includes('command')) {
@@ -124,11 +141,11 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       primaryIntent: 'Process user request',
       confidence: 0.6,
       requiredTools: requiredTools.length > 0 ? requiredTools : availableTools.slice(0, 3),
-      suggestedApproach: needsCodeContext
-        ? 'First search for relevant code/files to understand context, then take action'
+      suggestedApproach: needsWorkspaceUnderstanding || needsCodeContext
+        ? 'Explore workspace to understand structure, then search relevant code and act'
         : 'Analyze request and use appropriate tools',
       complexity: 'moderate',
-      estimatedSteps: needsCodeContext ? 3 : 2
+      estimatedSteps: needsWorkspaceUnderstanding || needsCodeContext ? 3 : 2
     };
   }
 }
