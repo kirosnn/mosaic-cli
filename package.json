@@ -1,6 +1,6 @@
 {
   "name": "mosaic-cli",
-  "version": "0.0.4.1",
+  "version": "0.0.4.2",
   "description": "An AI-powered CLI code assistant",
   "type": "module",
   "main": "dist/index.js",
@@ -30,6 +30,7 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "marked": "^16.4.1",
+    "ollama": "^0.6.2",
     "openai": "^6.7.0",
     "react": ">=19.0.0"
   }
