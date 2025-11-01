@@ -56,7 +56,6 @@ export const useKeyboardShortcuts = ({
     if (key.ctrl && inputChar === 'c') {
       if (waitingForSecondCtrlC.current) {
         if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-        process.stdout.write('\x1b[2J\x1b[0f');
         exit();
       } else {
         waitingForSecondCtrlC.current = true;

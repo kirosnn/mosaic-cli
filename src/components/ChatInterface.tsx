@@ -381,7 +381,12 @@ const ChatInterface: React.FC = () => {
       />
 
       <Box marginTop={1} paddingX={2} flexDirection="column">
-        <MessageList messages={messages} theme={theme} />
+        <MessageList 
+          messages={messages} 
+          theme={theme} 
+          isStreaming={isStreaming.current}
+          streamingMessageIndex={streamingIndex.current ?? -1}
+        />
 
         {currentToolExecutions.length > 0 && (
           <Box marginBottom={1} flexDirection="column" paddingLeft={2}>

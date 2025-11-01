@@ -7,9 +7,11 @@ import MarkdownText from './MarkdownText.js';
 interface MessageListProps {
   messages: Message[];
   theme: Theme;
+  isStreaming?: boolean;
+  streamingMessageIndex?: number;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages, theme }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming = false, streamingMessageIndex = -1 }) => {
   if (messages.length === 0) {
     return (
       <Box marginBottom={1}>
@@ -26,7 +28,12 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme }) => {
             <Text color={theme.colors.text}>{msg.content}</Text>
           ) : (
             <Box paddingLeft={2}>
-              <MarkdownText content={msg.content} theme={theme} withBullet={true} />
+              <MarkdownText 
+                content={msg.content} 
+                theme={theme} 
+                withBullet={true} 
+                isStreaming={isStreaming && index === streamingMessageIndex}
+              />
             </Box>
           )}
         </Box>

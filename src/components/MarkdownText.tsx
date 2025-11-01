@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { Theme } from '../config/themes.js';
 
@@ -6,11 +6,29 @@ interface MarkdownTextProps {
   content: string;
   theme: Theme;
   withBullet?: boolean;
+  isStreaming?: boolean;
 }
 
-const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet = false }) => {
+const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet = false, isStreaming = false }) => {
+  const previousContentRef = useRef<string>('');
+  const streamingBufferRef = useRef<string>('');
+
+  // Gérer le contenu en streaming
+  useEffect(() => {
+    if (isStreaming) {
+      streamingBufferRef.current = content;
+    } else {
+      streamingBufferRef.current = '';
+      previousContentRef.current = content;
+    }
+  }, [content, isStreaming]);
+
   const parseMarkdown = (text: string): React.ReactElement[] => {
-    const safeText = text || '';
+    if (!text || text.trim() === '') {
+      return [<Text key="empty" color={theme.colors.text}> </Text>];
+    }
+
+    const safeText = text.replace(/\r/g, '');
     const lines = safeText.split('\n');
     const elements: React.ReactElement[] = [];
 
@@ -21,7 +39,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      if (line.startsWith('```')) {
+      if (line.trim().startsWith('```')) {
         if (inCodeBlock) {
           elements.push(
             <Box key={`code-${i}`} flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginY={0}>
@@ -29,7 +47,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
                 <Text color={theme.colors.secondary} dimColor>{codeBlockLanguage}</Text>
               )}
               {codeBlockContent.map((codeLine, idx) => (
-                <Text key={idx} color={theme.colors.accent}>{codeLine}</Text>
+                <Text key={`code-line-${i}-${idx}`} color={theme.colors.accent}>{codeLine}</Text>
               ))}
             </Box>
           );
@@ -38,7 +56,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
           inCodeBlock = false;
         } else {
           inCodeBlock = true;
-          codeBlockLanguage = line.substring(3).trim();
+          codeBlockLanguage = line.trim().substring(3).trim();
         }
         continue;
       }
@@ -48,59 +66,76 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         continue;
       }
 
-      const processedLine = processInlineMarkdown(line, theme);
-
       if (line.startsWith('# ')) {
         elements.push(
-          <Text key={i} bold color={theme.colors.primary}>{line.substring(2)}</Text>
+          <Text key={`h1-${i}`} bold color={theme.colors.primary}>{line.substring(2)}</Text>
         );
-      } else if (line.startsWith('## ')) {
+        continue;
+      }
+
+      if (line.startsWith('## ')) {
         elements.push(
-          <Text key={i} bold color={theme.colors.primary}>{line.substring(3)}</Text>
+          <Text key={`h2-${i}`} bold color={theme.colors.primary}>{line.substring(3)}</Text>
         );
-      } else if (line.startsWith('### ')) {
+        continue;
+      }
+
+      if (line.startsWith('### ')) {
         elements.push(
-          <Text key={i} bold color={theme.colors.secondary}>{line.substring(4)}</Text>
+          <Text key={`h3-${i}`} bold color={theme.colors.secondary}>{line.substring(4)}</Text>
         );
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        continue;
+      }
+
+      if (line.startsWith('- ') || line.startsWith('* ')) {
         const listContent = line.substring(2);
         elements.push(
-          <Box key={i}>
+          <Box key={`ul-${i}`}>
             <Text color={theme.colors.accent}>  • </Text>
-            {processInlineMarkdown(listContent, theme)}
+            {processInlineMarkdown(listContent, theme, `ul-${i}`)}
           </Box>
         );
-      } else if (/^\d+\.\s/.test(line)) {
-        const match = line.match(/^(\d+)\.\s(.*)$/);
-        if (match) {
-          elements.push(
-            <Box key={i}>
-              <Text color={theme.colors.accent}>  {match[1]}. </Text>
-              {processInlineMarkdown(match[2], theme)}
-            </Box>
-          );
-        }
-      } else if (line.startsWith('>')) {
-        elements.push(
-          <Box key={i} borderStyle="single" borderColor="gray" borderLeft paddingLeft={1}>
-            <Text color={theme.colors.secondary} italic>{line.substring(1).trim()}</Text>
-          </Box>
-        );
-      } else if (line.trim() === '') {
-        elements.push(<Text key={i}>{' '}</Text>);
-      } else {
-        elements.push(
-          <Box key={i}>
-            {processedLine}
-          </Box>
-        );
+        continue;
       }
+
+      const olMatch = line.match(/^(\d+)\.\s(.*)$/);
+      if (olMatch) {
+        elements.push(
+          <Box key={`ol-${i}`}>
+            <Text color={theme.colors.accent}>  {olMatch[1]}. </Text>
+            {processInlineMarkdown(olMatch[2], theme, `ol-${i}`)}
+          </Box>
+        );
+        continue;
+      }
+
+      if (line.startsWith('>')) {
+        const quote = line.substring(1).trim();
+        elements.push(
+          <Box key={`blockquote-${i}`}>
+            <Text color={theme.colors.secondary}>│ </Text>
+            <Text color={theme.colors.secondary} italic>{quote}</Text>
+          </Box>
+        );
+        continue;
+      }
+
+      if (line.trim() === '') {
+        elements.push(<Text key={`blank-${i}`}> </Text>);
+        continue;
+      }
+
+      elements.push(
+        <Box key={`line-${i}`}>
+          {processInlineMarkdown(line, theme, `line-${i}`)}
+        </Box>
+      );
     }
 
     return elements;
   };
 
-  const processInlineMarkdown = (text: string, theme: Theme): React.ReactElement => {
+  const processInlineMarkdown = (text: string, theme: Theme, keyPrefix: string): React.ReactElement => {
     const parts: (string | React.ReactElement)[] = [];
     let currentText = '';
     let i = 0;
@@ -116,9 +151,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         if (endIndex !== -1) {
           const code = text.substring(i + 1, endIndex);
           parts.push(
-            <Text key={`code-${i}`} backgroundColor="black" color={theme.colors.accent}>
-              {code}
-            </Text>
+            <Text key={`${keyPrefix}-code-${i}`} backgroundColor="black" color={theme.colors.accent}>{code}</Text>
           );
           i = endIndex + 1;
           continue;
@@ -135,9 +168,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         if (endIndex !== -1) {
           const boldText = text.substring(i + 2, endIndex);
           parts.push(
-            <Text key={`bold-${i}`} bold color={theme.colors.text}>
-              {boldText}
-            </Text>
+            <Text key={`${keyPrefix}-bold-${i}`} bold color={theme.colors.text}>{boldText}</Text>
           );
           i = endIndex + 2;
           continue;
@@ -154,9 +185,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         if (endIndex !== -1 && text[endIndex + 1] !== '*') {
           const italicText = text.substring(i + 1, endIndex);
           parts.push(
-            <Text key={`italic-${i}`} italic color={theme.colors.text}>
-              {italicText}
-            </Text>
+            <Text key={`${keyPrefix}-italic-${i}`} italic color={theme.colors.text}>{italicText}</Text>
           );
           i = endIndex + 1;
           continue;
@@ -172,35 +201,44 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
     }
 
     return (
-      <Text color={theme.colors.text}>
+      <Box>
         {parts.map((part, index) => (
-          typeof part === 'string' ? part : React.cloneElement(part as React.ReactElement, { key: `inline-${index}` })
-        ))}
-      </Text>
-    );
-  };
-
-  const elements = parseMarkdown(content);
-
-  if (withBullet && elements.length > 0) {
-    return (
-      <Box flexDirection="column">
-        <Box>
-          <Text color={theme.colors.accent}>● </Text>
-          <Box flexDirection="column">
-            {elements[0]}
-          </Box>
-        </Box>
-        {elements.slice(1).map((element, index) => (
-          <Box key={`rest-${index}`} paddingLeft={2}>
-            {element}
-          </Box>
+          typeof part === 'string'
+            ? <Text key={`${keyPrefix}-seg-${index}`} color={theme.colors.text}>{part}</Text>
+            : React.cloneElement(part as React.ReactElement, { key: `${keyPrefix}-seg-${index}` })
         ))}
       </Box>
     );
+  };
+
+  const elements = useMemo(() => {
+    const textToRender = isStreaming ? streamingBufferRef.current : content;
+    return parseMarkdown(textToRender);
+  }, [content, isStreaming]);
+
+  if (withBullet && elements.length > 0) {
+    return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color={theme.colors.accent}>● </Text>
+        <Box flexDirection="column">
+          {elements[0]}
+        </Box>
+      </Box>
+      {elements.slice(1).map((element, index) => (
+        <Box key={`rest-${index}`} paddingLeft={2}>
+          {element}
+        </Box>
+      ))}
+    </Box>
+  );
   }
 
-  return <Box flexDirection="column">{elements}</Box>;
+  return (
+    <Box flexDirection="column">
+      {elements}
+    </Box>
+  );
 };
 
 export default MarkdownText;
