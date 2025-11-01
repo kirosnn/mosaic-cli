@@ -381,25 +381,7 @@ const ChatInterface: React.FC = () => {
       />
 
       <Box marginTop={1} paddingX={2} flexDirection="column">
-        {messages.map((msg, index) => (
-          <Box key={index} marginBottom={1} flexDirection="column">
-            {msg.role === 'user' ? (
-              <Text color={theme.colors.text}>{msg.content}</Text>
-            ) : (
-              <>
-                {msg.toolExecutions && msg.toolExecutions.length > 0 && (
-                  <Box flexDirection="column" paddingLeft={2} marginBottom={1}>
-                    <ToolExecutionList tools={msg.toolExecutions} theme={theme} />
-                  </Box>
-                )}
-                <Box paddingLeft={2}>
-                  <Text color={theme.colors.text}>● </Text>
-                  <Text color={theme.colors.text}>{msg.content}</Text>
-                </Box>
-              </>
-            )}
-          </Box>
-        ))}
+        <MessageList messages={messages} theme={theme} />
 
         {currentToolExecutions.length > 0 && (
           <Box marginBottom={1} flexDirection="column" paddingLeft={2}>
