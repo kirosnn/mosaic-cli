@@ -16,6 +16,7 @@ import { ProviderConfig } from '../config/providers.js';
 import { IntentionDetector } from './planning/IntentionDetector.js';
 import { TaskPlanner, ExecutionPlan } from './planning/TaskPlanner.js';
 import { buildOrchestratorSystemPrompt } from '../config/systemPrompt.js';
+import { filterToolCallsFromText } from '../utils/streamFilter.js';
 
 export class Orchestrator {
   private agents: Map<string, Agent> = new Map();
@@ -173,19 +174,27 @@ export class Orchestrator {
         data: { iteration }
       });
       let accumulated = '';
+      let lastStreamedLength = 0;
       const aiResponse = await this.aiProvider.sendMessageStream(messages, (delta: string) => {
         accumulated += delta;
-        this.emit({
-          type: 'ai_stream_delta',
-          timestamp: new Date(),
-          data: { delta }
-        });
+        const fullFiltered = filterToolCallsFromText(accumulated);
+        const newFilteredText = fullFiltered.slice(lastStreamedLength);
+
+        if (newFilteredText.length > 0) {
+          this.emit({
+            type: 'ai_stream_delta',
+            timestamp: new Date(),
+            data: { delta: newFilteredText }
+          });
+          lastStreamedLength = fullFiltered.length;
+        }
       });
       if (!aiResponse.error) {
+        const filteredContent = filterToolCallsFromText(accumulated);
         this.emit({
           type: 'ai_stream_complete',
           timestamp: new Date(),
-          data: { content: accumulated }
+          data: { content: filteredContent }
         });
       } else {
         this.emit({
@@ -222,12 +231,13 @@ export class Orchestrator {
       const toolCalls = this.extractToolCalls(finalContent);
 
       if (toolCalls.length === 0) {
+        const filteredFinalContent = filterToolCallsFromText(finalContent);
         this.emit({
           type: 'final_response',
           timestamp: new Date(),
-          data: { response: finalContent }
+          data: { response: filteredFinalContent }
         });
-        finalResponse = finalContent;
+        finalResponse = filteredFinalContent;
         break;
       }
 
@@ -337,10 +347,16 @@ export class Orchestrator {
 
     if (toolResult.success) {
       enriched += `Result: SUCCESS\n${JSON.stringify(toolResult.data, null, 2)}\n\n`;
-      enriched += `Analyze this result and provide your response to the user. If you need more information, execute additional tools using the JSON format.`;
+      enriched += `**CRITICAL**: You MUST now analyze these results and provide a comprehensive response to the USER.\n`;
+      enriched += `Your task is NOT complete - you need to:\n`;
+      enriched += `1. Analyze the data returned by the tool\n`;
+      enriched += `2. Extract key information relevant to the USER's request\n`;
+      enriched += `3. Present findings in a clear, organized way\n`;
+      enriched += `4. Provide insights, recommendations, or next steps\n\n`;
+      enriched += `Remember: Tool execution is a MEANS to answer the USER's question, not the END. Continue your response now.`;
     } else {
       enriched += `Result: FAILED\nError: ${toolResult.error}\n\n`;
-      enriched += `The tool failed. Try alternative approaches using different tools or parameters.`;
+      enriched += `The tool failed. Try alternative approaches using different tools or parameters, or explain the issue to the USER if no alternatives exist.`;
     }
 
     if (toolResult.metadata && Object.keys(toolResult.metadata).length > 0) {

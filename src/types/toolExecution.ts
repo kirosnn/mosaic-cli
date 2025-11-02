@@ -6,6 +6,7 @@ export interface ToolExecution {
   status: 'running' | 'completed' | 'error';
   result?: string;
   parameters?: Record<string, any>;
+  insertAt?: number;
 }
 
 export interface MessageWithTools extends Message {

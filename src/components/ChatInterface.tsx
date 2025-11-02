@@ -4,6 +4,7 @@ import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig } 
 import { shortcuts, commands } from '../config/shortcuts.js';
 import { Orchestrator, universalAgent, allTools } from '../orchestrator/index.js';
 import { ToolExecution, MessageWithTools } from '../types/toolExecution.js';
+import { formatToolName, formatToolResult } from '../utils/toolFormatters.js';
 import ChatHeader from './ChatHeader.js';
 import MessageList from './MessageList.js';
 import ChatInput from './ChatInput.js';
@@ -38,6 +39,7 @@ const ChatInterface: React.FC = () => {
   const verboseLogger = useRef(new VerboseLogger(false));
   const streamingIndex = useRef<number | null>(null);
   const isStreaming = useRef<boolean>(false);
+  const iterationCount = useRef<number>(0);
 
   const { pendingApproval, wrapToolExecution } = useToolApproval({
     onToolStart: (tool) => {
@@ -86,17 +88,25 @@ const ChatInterface: React.FC = () => {
       if (event.type === 'ai_stream_start') {
         isStreaming.current = true;
         if (streamingIndex.current === null) {
+          iterationCount.current = 0;
           setMessages(prev => {
             const idx = prev.length;
             streamingIndex.current = idx;
             return [...prev, { role: 'assistant', content: '' }];
           });
         } else {
+          iterationCount.current += 1;
           setMessages(prev => {
             const updated = [...prev];
             const idx = streamingIndex.current!;
             if (updated[idx] && updated[idx].role === 'assistant') {
-              updated[idx] = { role: 'assistant', content: '' };
+              const msg = updated[idx] as MessageWithTools;
+              const separator = iterationCount.current > 0 && msg.content ? '\n\n' : '';
+              updated[idx] = {
+                role: 'assistant',
+                content: msg.content + separator,
+                toolExecutions: msg.toolExecutions
+              };
             }
             return updated;
           });
@@ -104,18 +114,94 @@ const ChatInterface: React.FC = () => {
       } else if (event.type === 'ai_stream_delta') {
         const delta = typeof event.data?.delta === 'string' ? event.data.delta : '';
         if (delta.length === 0) return;
-        if (streamingIndex.current === null) return;
-
+        if (streamingIndex.current === null) {
+          return;
+        }
         setMessages(prev => {
           const updated = [...prev];
           const idx = streamingIndex.current!;
-          const msg = updated[idx];
+          const msg = updated[idx] as MessageWithTools;
           if (msg && msg.role === 'assistant') {
-            updated[idx] = { ...msg, content: (msg.content || '') + delta } as any;
+            const newContent = (msg.content || '') + delta;
+            updated[idx] = {
+              ...msg,
+              content: newContent,
+              toolExecutions: msg.toolExecutions
+            } as MessageWithTools;
           }
           return updated;
         });
         setTokenCount(prev => prev + estimateTokens(delta));
+      } else if (event.type === 'tool_executing') {
+        if (streamingIndex.current !== null) {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = streamingIndex.current!;
+            const msg = updated[idx] as MessageWithTools;
+            if (msg && msg.role === 'assistant') {
+              const toolExecutions = msg.toolExecutions || [];
+              const toolName = event.data?.toolName || '';
+              const newTool = {
+                name: toolName,
+                displayName: formatToolName(toolName),
+                status: 'running' as const,
+                parameters: event.data?.parameters,
+                insertAt: (msg.content || '').length
+              };
+              updated[idx] = {
+                ...msg,
+                toolExecutions: [...toolExecutions, newTool]
+              } as MessageWithTools;
+            }
+            return updated;
+          });
+        }
+      } else if (event.type === 'tool_success' || event.type === 'tool_error') {
+        if (streamingIndex.current !== null) {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = streamingIndex.current!;
+            const msg = updated[idx] as MessageWithTools;
+            if (msg && msg.role === 'assistant' && msg.toolExecutions) {
+              const toolExecutions = [...msg.toolExecutions];
+              const toolIndex = toolExecutions.findIndex(
+                t => t.name === event.data?.toolName && t.status === 'running'
+              );
+              if (toolIndex !== -1) {
+                const tool = toolExecutions[toolIndex];
+                const result = event.type === 'tool_success'
+                  ? formatToolResult(tool.name, event.data?.result, tool.parameters)
+                  : (event.data?.error ? String(event.data.error).substring(0, 100) : undefined);
+                toolExecutions[toolIndex] = {
+                  ...tool,
+                  status: event.type === 'tool_success' ? 'completed' : 'error',
+                  result
+                };
+                updated[idx] = {
+                  ...msg,
+                  toolExecutions
+                } as MessageWithTools;
+              }
+            }
+            return updated;
+          });
+        }
+      } else if (event.type === 'ai_stream_complete') {
+        if (streamingIndex.current !== null && event.data?.content) {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = streamingIndex.current!;
+            const msg = updated[idx] as MessageWithTools;
+            if (msg && msg.role === 'assistant') {
+              updated[idx] = {
+                ...msg,
+                content: event.data.content,
+                toolExecutions: msg.toolExecutions
+              } as MessageWithTools;
+            }
+            return updated;
+          });
+        }
       } else if (event.type === 'ai_stream_error') {
         isStreaming.current = false;
       } else if (event.type === 'final_response') {
@@ -253,37 +339,9 @@ const ChatInterface: React.FC = () => {
 
         toolRegistry.execute = originalExecute;
 
-        const capturedStreamingIndex = streamingIndex.current;
-
-        setMessages(prev => {
-          if (capturedStreamingIndex !== null && capturedStreamingIndex < prev.length) {
-            const updated = [...prev];
-            const idx = capturedStreamingIndex;
-            const msg = updated[idx] as MessageWithTools;
-            if (msg && msg.role === 'assistant') {
-              updated[idx] = {
-                ...msg,
-                content: result.response,
-                toolExecutions: executedTools.length > 0 ? [...executedTools] : undefined
-              } as MessageWithTools;
-            }
-            return updated;
-          }
-
-          const fallbackAssistant: MessageWithTools = {
-            role: 'assistant',
-            content: result.response,
-            toolExecutions: executedTools.length > 0 ? [...executedTools] : undefined
-          };
-          return [...prev, fallbackAssistant];
-        });
         setCurrentToolExecutions([]);
 
       } catch (error) {
-        const executedTools: ToolExecution[] = currentToolExecutions.length > 0
-          ? [...currentToolExecutions]
-          : [];
-
         const capturedStreamingIndex = streamingIndex.current;
         const errorText = `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`;
 
@@ -296,7 +354,7 @@ const ChatInterface: React.FC = () => {
               updated[idx] = {
                 ...msg,
                 content: msg.content || errorText,
-                toolExecutions: executedTools.length > 0 ? executedTools : undefined
+                toolExecutions: msg.toolExecutions
               } as MessageWithTools;
             }
             return updated;
@@ -304,8 +362,7 @@ const ChatInterface: React.FC = () => {
 
           const errorMessage: MessageWithTools = {
             role: 'assistant',
-            content: errorText,
-            toolExecutions: executedTools.length > 0 ? executedTools : undefined
+            content: errorText
           };
           return [...prev, errorMessage];
         });
@@ -314,13 +371,16 @@ const ChatInterface: React.FC = () => {
         setIsLoading(false);
         streamingIndex.current = null;
         isStreaming.current = false;
+        iterationCount.current = 0;
       }
     }
   };
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    setHistoryIndex(-1);
+    if (historyIndex !== -1) {
+      setHistoryIndex(-1);
+    }
     if (showCtrlCMessage) {
       resetExitState();
     }
@@ -337,6 +397,8 @@ const ChatInterface: React.FC = () => {
         newIndex = historySize - 1;
       } else if (historyIndex > 0) {
         newIndex = historyIndex - 1;
+      } else {
+        return;
       }
     } else {
       if (historyIndex < historySize - 1) {
@@ -381,18 +443,12 @@ const ChatInterface: React.FC = () => {
       />
 
       <Box marginTop={1} paddingX={2} flexDirection="column">
-        <MessageList 
-          messages={messages} 
-          theme={theme} 
+        <MessageList
+          messages={messages}
+          theme={theme}
           isStreaming={isStreaming.current}
           streamingMessageIndex={streamingIndex.current ?? -1}
         />
-
-        {currentToolExecutions.length > 0 && (
-          <Box marginBottom={1} flexDirection="column" paddingLeft={2}>
-            <ToolExecutionList tools={currentToolExecutions} theme={theme} />
-          </Box>
-        )}
 
         {pendingApproval && (
           <ToolApprovalPrompt
@@ -402,7 +458,7 @@ const ChatInterface: React.FC = () => {
           />
         )}
 
-        {isLoading && currentToolExecutions.length === 0 && !pendingApproval && (
+        {isLoading && !pendingApproval && (
           <LoadingStatus theme={theme} tokenCount={tokenCount} />
         )}
       </Box>

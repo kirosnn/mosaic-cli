@@ -13,7 +13,6 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
   const previousContentRef = useRef<string>('');
   const streamingBufferRef = useRef<string>('');
 
-  // Gérer le contenu en streaming
   useEffect(() => {
     if (isStreaming) {
       streamingBufferRef.current = content;
@@ -91,7 +90,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
         const listContent = line.substring(2);
         elements.push(
           <Box key={`ul-${i}`}>
-            <Text color={theme.colors.accent}>  • </Text>
+            <Text color={theme.colors.accent}>  ◦ </Text>
             {processInlineMarkdown(listContent, theme, `ul-${i}`)}
           </Box>
         );

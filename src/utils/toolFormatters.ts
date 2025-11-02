@@ -1,3 +1,31 @@
+interface FileStructure {
+  name: string;
+  type: 'file' | 'directory';
+  path: string;
+  children?: FileStructure[];
+  size?: number;
+}
+
+const countFilesAndDirs = (structure: FileStructure[]): { files: number; dirs: number } => {
+  let files = 0;
+  let dirs = 0;
+
+  for (const item of structure) {
+    if (item.type === 'file') {
+      files++;
+    } else if (item.type === 'directory') {
+      dirs++;
+      if (item.children && item.children.length > 0) {
+        const childCounts = countFilesAndDirs(item.children);
+        files += childCounts.files;
+        dirs += childCounts.dirs;
+      }
+    }
+  }
+
+  return { files, dirs };
+};
+
 export const formatToolName = (toolName: string): string => {
   const nameMap: Record<string, string> = {
     'read_file': 'Read',
@@ -24,6 +52,20 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
     const data = typeof result === 'string' ? JSON.parse(result) : result;
 
     switch (toolName) {
+      case 'explore_workspace':
+        if (data.structure && Array.isArray(data.structure)) {
+          const counts = countFilesAndDirs(data.structure);
+          return `Analyzed ${counts.files} files in ${counts.dirs} directories`;
+        }
+        if (data.summary) {
+          return 'Workspace exploration completed';
+        }
+        if (data.files || data.directories) {
+          const files = Array.isArray(data.files) ? data.files.length : 0;
+          const dirs = Array.isArray(data.directories) ? data.directories.length : 0;
+          return `Found ${files} files, ${dirs} directories`;
+        }
+        return 'Workspace exploration completed';
       case 'read_file':
         if (data.content !== undefined && data.content !== null) {
           const lines = String(data.content).split('\n').length;
@@ -74,12 +116,12 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
 
     if (typeof data === 'object') {
       const str = JSON.stringify(data);
-      return str.length > 50 ? str.substring(0, 50) + '...' : str;
+      return str.length > 80 ? str.substring(0, 77) + '...' : str;
     }
 
     return String(data);
   } catch {
-    return String(result).substring(0, 50);
+    return String(result).substring(0, 80);
   }
 };
 
@@ -87,6 +129,12 @@ export const formatToolParameters = (toolName: string, parameters?: Record<strin
   if (!parameters) return '';
 
   switch (toolName) {
+    case 'explore_workspace':
+      return parameters.workingDirectory ?
+        (parameters.workingDirectory.length > 40 ?
+          '...' + parameters.workingDirectory.slice(-37) :
+          parameters.workingDirectory) :
+        'workspace';
     case 'read_file':
     case 'write_file':
     case 'update_file':

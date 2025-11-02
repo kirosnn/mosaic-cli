@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { Theme } from '../config/themes.js';
@@ -24,9 +24,25 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onSubmit,
   onHistoryNavigation
 }) => {
+  const isHistoryNavigationRef = useRef(false);
+  const previousInputRef = useRef(input);
+
+  useEffect(() => {
+    if (isHistoryNavigationRef.current && previousInputRef.current !== input) {
+      isHistoryNavigationRef.current = false;
+    }
+    previousInputRef.current = input;
+  }, [input]);
+
   const handleSubmit = (value: string) => {
     if (!isMenuOpen) {
       onSubmit(value);
+    }
+  };
+
+  const handleChange = (value: string) => {
+    if (!isHistoryNavigationRef.current) {
+      onInputChange(value);
     }
   };
 
@@ -36,9 +52,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
 
     if (onHistoryNavigation) {
-      if (key.upArrow && input === '') {
+      if (key.upArrow) {
+        isHistoryNavigationRef.current = true;
         onHistoryNavigation('up');
-      } else if (key.downArrow && input !== '') {
+      } else if (key.downArrow) {
+        isHistoryNavigationRef.current = true;
         onHistoryNavigation('down');
       }
     }
@@ -51,7 +69,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <Text color={theme.colors.secondary}>&gt; </Text>
         <TextInput
           value={input}
-          onChange={onInputChange}
+          onChange={handleChange}
           onSubmit={handleSubmit}
           placeholder="Type your message..."
         />
