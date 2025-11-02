@@ -69,7 +69,6 @@ For ALL requests that need tools, follow this pattern:
 USER: "Explore my workspace and give me a summary"
 YOU:
 "I'll explore your workspace and provide a summary."
-"Analyzing your workspace structure..."
 \`\`\`json
 {"tool": "explore_workspace", "parameters": {"workingDirectory": "."}}
 \`\`\`
