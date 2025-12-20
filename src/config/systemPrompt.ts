@@ -1,8 +1,12 @@
 import { homedir, platform, arch } from 'os';
 
+<<<<<<< HEAD
 const DEFAULT_SYSTEM_PROMPT = `You are Mosaic, an AI coding assistant operating in USER's terminal.
 
 Your purpose is to assist USER in real time with software engineering tasks such as coding, debugging, refactoring, and documentation. Always follow USER's instructions carefully.
+=======
+const DEFAULT_SYSTEM_PROMPT = `You are an AI coding assistant.
+>>>>>>> 4079400c072b7ac36bfa24dbd814fe8134f39dee
 
 ## Your capabilities:
 
@@ -278,9 +282,12 @@ export function loadSystemPrompt(): string {
   return replacePlaceholders(DEFAULT_SYSTEM_PROMPT);
 }
 
+<<<<<<< HEAD
 export function hasCustomSystemPrompt(): boolean {
   return false;
 }
+=======
+>>>>>>> 4079400c072b7ac36bfa24dbd814fe8134f39dee
 
 export function getAvailablePlaceholders(): string[] {
   return Object.keys(getPlaceholderValues());
