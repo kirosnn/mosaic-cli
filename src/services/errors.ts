@@ -11,6 +11,7 @@ export enum AIErrorType {
   PARSING_ERROR = 'PARSING_ERROR',
   MODEL_NOT_FOUND = 'MODEL_NOT_FOUND',
   CONTEXT_LENGTH_EXCEEDED = 'CONTEXT_LENGTH_EXCEEDED',
+  OLLAMA_NOT_RUNNING = 'OLLAMA_NOT_RUNNING',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'
 }
 
@@ -101,6 +102,37 @@ export class AIError extends Error {
   static fromNetworkError(error: unknown, provider: string, model?: string): AIError {
     const message = error instanceof Error ? error.message : String(error);
     const isTimeout = message.toLowerCase().includes('timeout') || message.toLowerCase().includes('aborted');
+    const isConnectionRefused = message.toLowerCase().includes('econnrefused') ||
+      message.toLowerCase().includes('connection refused') ||
+      message.toLowerCase().includes('fetch failed');
+    const isUnauthorized = message.toLowerCase().includes('unauthorized');
+
+    if (provider === 'Ollama' && isUnauthorized) {
+      const signinMatch = message.match(/signin_url":"([^"]+)"/);
+      const signinUrl = signinMatch ? signinMatch[1].replace(/\\u0026/g, '&') : null;
+
+      return new AIError({
+        type: AIErrorType.AUTHENTICATION_ERROR,
+        message: signinUrl
+          ? `Ollama requires authentication. Please connect by running:\n\nollama signin\n\nOr visit: ${signinUrl}`
+          : 'Ollama requires authentication. Please run: ollama signin',
+        provider,
+        model,
+        retryable: false,
+        originalError: error
+      });
+    }
+
+    if (provider === 'Ollama' && isConnectionRefused) {
+      return new AIError({
+        type: AIErrorType.OLLAMA_NOT_RUNNING,
+        message: 'Ollama is not running. Please start Ollama with "ollama serve" or ensure it is running in the background.',
+        provider,
+        model,
+        retryable: false,
+        originalError: error
+      });
+    }
 
     return new AIError({
       type: isTimeout ? AIErrorType.TIMEOUT_ERROR : AIErrorType.NETWORK_ERROR,
@@ -136,6 +168,15 @@ export class AIError extends Error {
       message: `${provider} streaming error: ${message}`,
       provider,
       model,
+      retryable: false
+    });
+  }
+
+  static ollamaNotRunning(): AIError {
+    return new AIError({
+      type: AIErrorType.OLLAMA_NOT_RUNNING,
+      message: 'Ollama is not running. Please start Ollama with "ollama serve" or ensure it is running in the background.',
+      provider: 'Ollama',
       retryable: false
     });
   }
