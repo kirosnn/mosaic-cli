@@ -17,6 +17,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useToolApproval } from '../hooks/useToolApproval.js';
 import { historyService } from '../services/historyService.js';
 import { VerboseLogger } from '../utils/VerboseLogger.js';
+import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalTitle.js';
 
 const version = getPackageVersion();
 
@@ -123,9 +124,17 @@ const ChatInterface: React.FC = () => {
           const msg = updated[idx] as MessageWithTools;
           if (msg && msg.role === 'assistant') {
             const newContent = (msg.content || '') + delta;
+
+            const title = extractTitleFromResponse(newContent);
+            if (title) {
+              setTerminalTitle(`✹ ${title}`);
+            }
+
+            const cleanedContent = removeTitleFromContent(newContent);
+
             updated[idx] = {
               ...msg,
-              content: newContent,
+              content: cleanedContent,
               toolExecutions: msg.toolExecutions
             } as MessageWithTools;
           }
@@ -193,9 +202,18 @@ const ChatInterface: React.FC = () => {
             const idx = streamingIndex.current!;
             const msg = updated[idx] as MessageWithTools;
             if (msg && msg.role === 'assistant') {
+              const finalContent = event.data.content;
+
+              const title = extractTitleFromResponse(finalContent);
+              if (title) {
+                setTerminalTitle(`✹ ${title}`);
+              }
+
+              const cleanedContent = removeTitleFromContent(finalContent);
+
               updated[idx] = {
                 ...msg,
-                content: event.data.content,
+                content: cleanedContent,
                 toolExecutions: msg.toolExecutions
               } as MessageWithTools;
             }
