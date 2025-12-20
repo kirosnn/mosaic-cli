@@ -165,8 +165,8 @@ export class OllamaClient {
       }
 
       if (message.toLowerCase().includes('econnrefused') ||
-          message.toLowerCase().includes('connection refused') ||
-          message.toLowerCase().includes('fetch failed')) {
+        message.toLowerCase().includes('connection refused') ||
+        message.toLowerCase().includes('fetch failed')) {
 
         console.log('Ollama is not running. Attempting to start...');
         const started = await this.startOllama();

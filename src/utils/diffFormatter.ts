@@ -27,7 +27,7 @@ export const generateUpdatePreview = (path: string, oldContent: string, newConte
 
   let preview = `Updating: ${path}\n\n`;
 
-  const changes: Array<{start: number, end: number, type: 'modify'}> = [];
+  const changes: Array<{ start: number, end: number, type: 'modify' }> = [];
 
   for (let i = 0; i < Math.max(oldLines.length, newLines.length); i++) {
     if (oldLines[i] !== newLines[i]) {
