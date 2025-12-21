@@ -4,8 +4,11 @@ import React from 'react';
 import App from './components/App.js';
 import { ensureMosaicDir } from './config/index.js';
 import { setTerminalTitle } from './utils/terminalTitle.js';
+import { updateProvidersWithLatestModels } from './config/providers.js';
 
 ensureMosaicDir();
+
+updateProvidersWithLatestModels().catch(() => {});
 
 setTerminalTitle('✹ Mosaic');
 

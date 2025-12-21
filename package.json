@@ -1,6 +1,6 @@
 {
   "name": "mosaic-cli",
-  "version": "0.0.4.3",
+  "version": "0.0.4.31",
   "description": "An AI-powered CLI code assistant",
   "type": "module",
   "main": "dist/index.js",
@@ -11,7 +11,8 @@
     "build": "tsc",
     "dev": "node --loader ts-node/esm src/index.tsx",
     "start": "node dist/index.js",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "update-models": "tsx scripts/updateModelsFallback.ts"
   },
   "author": "kirosnn",
   "license": "MIT",
@@ -19,6 +20,7 @@
     "@types/node": "^20.0.0",
     "@types/react": ">=19.0.0",
     "ts-node": "^10.9.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {

@@ -1,3 +1,5 @@
+import { getAllProvidersLatestModels, getModelCapabilitiesFromAPI } from '../utils/modelsFetcher.js';
+
 export type ProviderType = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'xai' | 'mistral' | 'custom';
 
 export interface ModelCapabilities {
@@ -174,6 +176,23 @@ export function getProviderNames(): string[] {
   return getProviderTypes().map(type => PROVIDERS[type].name);
 }
 
+export async function updateProvidersWithLatestModels(): Promise<void> {
+  try {
+    const latestModels = await getAllProvidersLatestModels(10);
+
+    for (const [providerType, modelsData] of Object.entries(latestModels)) {
+      const provider = PROVIDERS[providerType as ProviderType];
+      if (provider && modelsData.defaultModels.length > 0) {
+        provider.defaultModels = modelsData.defaultModels;
+        provider.reasoningModels = modelsData.reasoningModels;
+        provider.supportsReasoning = modelsData.reasoningModels.length > 0;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update providers with latest models:', error);
+  }
+}
+
 export function getModelCapabilities(provider: ProviderType, model: string): Partial<ModelCapabilities> {
   const isReasoning = isReasoningModel(provider, model);
 
@@ -182,4 +201,38 @@ export function getModelCapabilities(provider: ProviderType, model: string): Par
     supportsReasoning: isReasoning,
     supportsVision: model.toLowerCase().includes('vision') || model.toLowerCase().includes('grok'),
   };
+}
+
+export async function getModelCapabilitiesFromProvider(provider: ProviderType, model: string): Promise<Partial<ModelCapabilities>> {
+  const providerMapping: Record<ProviderType, string> = {
+    'openai': 'openai',
+    'anthropic': 'anthropic',
+    'openrouter': 'openrouter',
+    'ollama': 'ollama-cloud',
+    'xai': 'xai',
+    'mistral': 'mistralai',
+    'custom': '',
+  };
+
+  const providerKey = providerMapping[provider];
+
+  if (!providerKey) {
+    return getModelCapabilities(provider, model);
+  }
+
+  try {
+    const apiCapabilities = await getModelCapabilitiesFromAPI(providerKey, model);
+
+    if (apiCapabilities) {
+      return {
+        supportsStreaming: true,
+        supportsReasoning: apiCapabilities.supportsReasoning,
+        supportsVision: apiCapabilities.supportsVision,
+      };
+    }
+  } catch (error) {
+    console.error(`Failed to fetch capabilities for ${model}:`, error);
+  }
+
+  return getModelCapabilities(provider, model);
 }

@@ -1,4 +1,5 @@
 import { homedir, platform, arch } from 'os';
+import { loadMosaicContext } from '../utils/mosaicContext.js';
 
 const DEFAULT_SYSTEM_PROMPT = `You are Mosaic, an AI coding assistant operating in USER's terminal.
 
@@ -82,15 +83,16 @@ When using tools, you may optionally send very brief messages (8-12 words) to ke
 - **Ultra-concise**: 8-12 words maximum when you do communicate.
 - **Group related actions**: If using multiple tools, one brief message for the group is enough.
 - **Skip trivial operations**: No message needed for single file reads or simple operations.
-- **Action-oriented**: Focus on what you're DOING, not what you "will do".
+- **Action-oriented**: Use "I'm going to..." or "I'll..." format to announce what you're ABOUT TO DO.
+- **No repetition**: NEVER repeat the same message within a single response.
 
 **Examples (optional, not mandatory):**
 
-- "Checking API routes..."
-- "Updating config and tests..."
-- "Exploring repo structure..."
-- "Fixing type errors..."
-- "Running tests..."
+- "I'm going to check the API routes"
+- "I'll update the config and tests"
+- "I'm going to explore the workspace"
+- "I'll fix the type errors"
+- "I'm going to run the tests"
 
 ## Window Title - MANDATORY
 
@@ -336,7 +338,24 @@ function replacePlaceholders(content: string): string {
 }
 
 export function loadSystemPrompt(): string {
-  return replacePlaceholders(DEFAULT_SYSTEM_PROMPT);
+  const basePrompt = replacePlaceholders(DEFAULT_SYSTEM_PROMPT);
+
+  const mosaicContext = loadMosaicContext();
+  if (mosaicContext) {
+    return `${basePrompt}
+
+## WORKSPACE CONTEXT (MOSAIC.md)
+
+The following context describes the current workspace. Use this information to better understand the project structure, conventions, and architecture when assisting the user.
+
+${mosaicContext}
+
+---
+
+Remember to always prioritize this workspace context when answering questions or making suggestions about the user's project.`;
+  }
+
+  return basePrompt;
 }
 
 export function hasCustomSystemPrompt(): boolean {

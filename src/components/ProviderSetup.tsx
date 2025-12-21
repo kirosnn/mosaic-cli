@@ -11,11 +11,12 @@ import { setSecret } from '../config/secrets.js';
 
 interface ProviderSetupProps {
   onComplete: (provider: { type: ProviderType; model: string; baseUrl?: string }) => void;
+  onBack?: () => void;
 }
 
 type SetupStep = 'provider' | 'model' | 'apiKey' | 'baseUrl';
 
-const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
+const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete, onBack }) => {
   const [currentStep, setCurrentStep] = useState<SetupStep>('provider');
   const [selectedProviderIndex, setSelectedProviderIndex] = useState(0);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
@@ -41,6 +42,10 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         setSelectedProviderIndex(prev =>
           prev < providerTypes.length - 1 ? prev + 1 : 0
         );
+      } else if (key.escape) {
+        if (onBack) {
+          onBack();
+        }
       } else if (key.return) {
         const provider = providerTypes[selectedProviderIndex];
         setSelectedProvider(provider);
@@ -55,6 +60,10 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         setSelectedModelIndex(prev =>
           prev < providerOptions.length - 1 ? prev + 1 : 0
         );
+      } else if (key.escape) {
+        setCurrentStep('provider');
+        setSelectedProvider(null);
+        setSelectedModel(null);
       } else if (key.return) {
         const selectedOption = providerOptions[selectedModelIndex];
         if (selectedOption === 'Custom model') {
@@ -66,6 +75,31 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
       }
     }
   }, { isActive: currentStep === 'provider' || (currentStep === 'model' && !isCustomModel) });
+
+  useInput((input, key) => {
+    if (key.escape) {
+      setIsCustomModel(false);
+      setCustomModel('');
+    }
+  }, { isActive: currentStep === 'model' && isCustomModel });
+
+  useInput((input, key) => {
+    if (key.escape) {
+      setCurrentStep('model');
+      setApiKey('');
+    }
+  }, { isActive: currentStep === 'apiKey' });
+
+  useInput((input, key) => {
+    if (key.escape) {
+      if (selectedProvider && getProviderOption(selectedProvider).requiresApiKey) {
+        setCurrentStep('apiKey');
+      } else {
+        setCurrentStep('model');
+      }
+      setBaseUrl('http://localhost:11434');
+    }
+  }, { isActive: currentStep === 'baseUrl' });
 
   const handleModelSelected = (model: string) => {
     if (!selectedProvider) return;
@@ -142,7 +176,10 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray">Use ↑↓ arrows to navigate, Enter to select</Text>
+          <Text color="gray">
+            Use ↑↓ arrows to navigate — enter to select
+            {onBack && ' — esc to go back'}
+          </Text>
         </Box>
       </Box>
     );
@@ -166,7 +203,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
           </Box>
 
           <Box marginTop={1}>
-            <Text color="gray">Press Enter to confirm</Text>
+            <Text color="gray">Press Enter to confirm — esc to go back</Text>
           </Box>
         </Box>
       );
@@ -190,7 +227,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray">Use ↑↓ arrows to navigate, Enter to select</Text>
+          <Text color="gray">Use ↑↓ arrows to navigate — enter to select — esc to go back</Text>
         </Box>
       </Box>
     );
@@ -222,7 +259,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray">Press Enter to confirm (or leave empty to skip)</Text>
+          <Text color="gray">Press Enter to confirm (or leave empty to skip) — esc to go back</Text>
         </Box>
       </Box>
     );
@@ -245,7 +282,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete }) => {
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray">Press Enter to confirm</Text>
+          <Text color="gray">Press Enter to confirm — esc to go back</Text>
         </Box>
       </Box>
     );

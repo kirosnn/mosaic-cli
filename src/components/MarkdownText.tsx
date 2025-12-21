@@ -217,20 +217,20 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
 
   if (withBullet && elements.length > 0) {
     return (
-    <Box flexDirection="column">
-      <Box>
-        <Text color={theme.colors.accent}>● </Text>
-        <Box flexDirection="column">
-          {elements[0]}
+      <Box flexDirection="column">
+        <Box>
+          <Text color={theme.colors.accent}>● </Text>
+          <Box flexDirection="column">
+            {elements[0]}
+          </Box>
         </Box>
+        {elements.slice(1).map((element, index) => (
+          <Box key={`rest-${index}`} paddingLeft={2}>
+            {element}
+          </Box>
+        ))}
       </Box>
-      {elements.slice(1).map((element, index) => (
-        <Box key={`rest-${index}`} paddingLeft={2}>
-          {element}
-        </Box>
-      ))}
-    </Box>
-  );
+    );
   }
 
   return (

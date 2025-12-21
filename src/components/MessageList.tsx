@@ -38,10 +38,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                   return (
                     <>
                       <Box paddingLeft={2}>
-                        <MarkdownText 
-                          content={content} 
-                          theme={theme} 
-                          withBullet={true} 
+                        <MarkdownText
+                          content={content}
+                          theme={theme}
+                          withBullet={true}
                           isStreaming={isStreaming && index === streamingMessageIndex}
                         />
                       </Box>
@@ -76,10 +76,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                   if (slice.length > 0) {
                     segments.push(
                       <Box key={`text-${index}-${cursor}-${g.pos}`} paddingLeft={2}>
-                        <MarkdownText 
-                          content={slice} 
-                          theme={theme} 
-                          withBullet={!bulletUsed} 
+                        <MarkdownText
+                          content={slice}
+                          theme={theme}
+                          withBullet={!bulletUsed}
                           isStreaming={false}
                         />
                       </Box>
@@ -99,10 +99,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                 const tail = content.slice(cursor);
                 segments.push(
                   <Box key={`text-tail-${index}-${cursor}`} paddingLeft={2}>
-                    <MarkdownText 
-                      content={tail} 
-                      theme={theme} 
-                      withBullet={!bulletUsed} 
+                    <MarkdownText
+                      content={tail}
+                      theme={theme}
+                      withBullet={!bulletUsed}
                       isStreaming={isStreaming && index === streamingMessageIndex}
                     />
                   </Box>

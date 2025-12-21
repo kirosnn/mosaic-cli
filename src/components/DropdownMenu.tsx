@@ -30,7 +30,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ items, selectedIndex, theme
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text color={theme.colors.secondary}>Use arrow keys to navigate, Enter to select, Esc to close</Text>
+        <Text color={theme.colors.secondary}>Use ↑↓ arrows to navigate — enter to select — esc to close</Text>
       </Box>
     </Box>
   );

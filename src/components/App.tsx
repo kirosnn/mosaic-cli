@@ -42,7 +42,7 @@ const App: React.FC = () => {
     return (
       <>
         <FirstWelcome
-          onComplete={() => {}}
+          onComplete={() => { }}
           showPrompt={false}
           enableInput={false}
         />

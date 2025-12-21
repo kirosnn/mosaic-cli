@@ -20,4 +20,5 @@ export const shortcuts: Shortcut[] = [
 export const commands: Command[] = [
   { name: '/theme', description: 'Change theme', action: 'theme' },
   { name: '/verbose', description: 'Toggle verbose mode', action: 'verbose' },
+  { name: '/init', description: 'Create MOSAIC.md for workspace', action: 'init' },
 ];

@@ -41,6 +41,7 @@ const ThemePreview: React.FC<{ theme: Theme }> = ({ theme }) => {
 const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndices, setSelectedIndices] = useState<Record<number, number>>({});
   const [configs, setConfigs] = useState<Record<string, any>>({});
   const [showProviderSetup, setShowProviderSetup] = useState(false);
 
@@ -89,6 +90,18 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
       setSelectedIndex(prev =>
         prev < steps[currentStep].options.length - 1 ? prev + 1 : 0
       );
+    } else if (key.escape && currentStep > 0) {
+      setSelectedIndices(prev => ({
+        ...prev,
+        [currentStep]: selectedIndex,
+      }));
+      setCurrentStep(currentStep - 1);
+      setSelectedIndex(selectedIndices[currentStep - 1] || 0);
+
+      const previousStepKey = steps[currentStep - 1].key;
+      const newConfigs = { ...configs };
+      delete newConfigs[previousStepKey];
+      setConfigs(newConfigs);
     } else if (key.return) {
       const currentStepData = steps[currentStep];
 
@@ -105,10 +118,14 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
       };
 
       setConfigs(newConfigs);
+      setSelectedIndices(prev => ({
+        ...prev,
+        [currentStep]: selectedIndex,
+      }));
 
       if (currentStep < steps.length - 1) {
         setCurrentStep(currentStep + 1);
-        setSelectedIndex(0);
+        setSelectedIndex(selectedIndices[currentStep + 1] || 0);
       } else {
         updateConfig(newConfigs);
         onComplete();
@@ -134,6 +151,19 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
     }
   };
 
+  const handleProviderBack = () => {
+    setShowProviderSetup(false);
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+      setSelectedIndex(selectedIndices[currentStep - 1] || 0);
+
+      const previousStepKey = steps[currentStep - 1].key;
+      const newConfigs = { ...configs };
+      delete newConfigs[previousStepKey];
+      setConfigs(newConfigs);
+    }
+  };
+
   if (steps.length === 0) {
     return null;
   }
@@ -148,7 +178,7 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
             Configuration setup ({currentStep + 1}/{steps.length})
           </Text>
         </Box>
-        <ProviderSetup onComplete={handleProviderComplete} />
+        <ProviderSetup onComplete={handleProviderComplete} onBack={handleProviderBack} />
       </Box>
     );
   }
@@ -197,7 +227,10 @@ const ConfigSetup: React.FC<ConfigSetupProps> = ({ missingConfigs, onComplete })
           </Box>
 
           <Box marginTop={1}>
-            <Text color="gray">Use ↑↓ arrows to navigate, Enter to select</Text>
+            <Text color="gray">
+              Use ↑↓ arrows to navigate — enter to select
+              {currentStep > 0 && ' — esc to go back'}
+            </Text>
           </Box>
         </>
       )}

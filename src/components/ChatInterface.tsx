@@ -18,6 +18,7 @@ import { useToolApproval } from '../hooks/useToolApproval.js';
 import { historyService } from '../services/historyService.js';
 import { VerboseLogger } from '../utils/VerboseLogger.js';
 import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalTitle.js';
+import { MOSAIC_INIT_PROMPT, getMosaicFilePath } from '../utils/mosaicContext.js';
 
 const version = getPackageVersion();
 
@@ -64,6 +65,19 @@ const ChatInterface: React.FC = () => {
   const currentDir = process.cwd();
   const theme = getTheme(currentThemeName);
   const themeNames = getThemeNames();
+
+  const filteredCommands = useMemo(() => {
+    if (!input.startsWith('/')) return commands;
+    const searchTerm = input.toLowerCase();
+    return commands.filter(cmd => cmd.name.toLowerCase().startsWith(searchTerm));
+  }, [input]);
+
+  const filteredShortcuts = useMemo(() => {
+    if (!input.startsWith('?')) return shortcuts;
+    const searchTerm = input.slice(1).toLowerCase();
+    if (searchTerm === '') return shortcuts;
+    return shortcuts.filter(sc => sc.key.toLowerCase().includes(searchTerm));
+  }, [input]);
 
   useEffect(() => {
     const loadedConfig = loadConfig();
@@ -150,12 +164,13 @@ const ChatInterface: React.FC = () => {
             if (msg && msg.role === 'assistant') {
               const toolExecutions = msg.toolExecutions || [];
               const toolName = event.data?.toolName || '';
+              const currentContentLength = (msg.content || '').length;
               const newTool = {
                 name: toolName,
                 displayName: formatToolName(toolName),
                 status: 'running' as const,
                 parameters: event.data?.parameters,
-                insertAt: (msg.content || '').length
+                insertAt: currentContentLength
               };
               updated[idx] = {
                 ...msg,
@@ -256,8 +271,102 @@ const ChatInterface: React.FC = () => {
     }
   }, [input, showShortcuts, showCommands]);
 
+  useEffect(() => {
+    if (showCommands && selectedIndex >= filteredCommands.length) {
+      setSelectedIndex(Math.max(0, filteredCommands.length - 1));
+    }
+  }, [filteredCommands, selectedIndex, showCommands]);
+
+  useEffect(() => {
+    if (showShortcuts && selectedIndex >= filteredShortcuts.length) {
+      setSelectedIndex(Math.max(0, filteredShortcuts.length - 1));
+    }
+  }, [filteredShortcuts, selectedIndex, showShortcuts]);
+
   const estimateTokens = (text: string): number => {
     return Math.ceil(text.length / 4);
+  };
+
+  const executeInitCommand = async () => {
+    if (isLoading || !orchestrator) return;
+
+    const mosaicPath = getMosaicFilePath();
+
+    const fs = await import('fs/promises');
+    try {
+      await fs.unlink(mosaicPath);
+    } catch {
+    }
+
+    const initMessage: MessageWithTools = {
+      role: 'assistant',
+      content: `Creating MOSAIC.md for workspace analysis...\n\nTarget file: ${mosaicPath}`
+    };
+    setMessages(prev => [...prev, initMessage]);
+
+    setIsLoading(true);
+    setCurrentToolExecutions([]);
+    resetExitState();
+
+    try {
+      const toolRegistry = orchestrator.getToolRegistry();
+      const originalExecute = toolRegistry.execute.bind(toolRegistry);
+      const executedTools: ToolExecution[] = [];
+
+      toolRegistry.execute = wrapToolExecution(originalExecute, executedTools);
+
+      await orchestrator.executeTaskWithPlanning(MOSAIC_INIT_PROMPT);
+
+      toolRegistry.execute = originalExecute;
+      setCurrentToolExecutions([]);
+
+      try {
+        await fs.access(mosaicPath);
+        const successMsg: MessageWithTools = {
+          role: 'assistant',
+          content: `MOSAIC.md created successfully at: ${mosaicPath}`
+        };
+        setMessages(prev => [...prev, successMsg]);
+      } catch {
+        const warningMsg: MessageWithTools = {
+          role: 'assistant',
+          content: `Warning: MOSAIC.md was not created. Please try again.`
+        };
+        setMessages(prev => [...prev, warningMsg]);
+      }
+
+    } catch (error) {
+      const capturedStreamingIndex = streamingIndex.current;
+      const errorText = `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`;
+
+      setMessages(prev => {
+        if (capturedStreamingIndex !== null && capturedStreamingIndex < prev.length) {
+          const updated = [...prev];
+          const idx = capturedStreamingIndex;
+          const msg = updated[idx] as MessageWithTools;
+          if (msg && msg.role === 'assistant') {
+            updated[idx] = {
+              ...msg,
+              content: msg.content || errorText,
+              toolExecutions: msg.toolExecutions
+            } as MessageWithTools;
+          }
+          return updated;
+        }
+
+        const errorMessage: MessageWithTools = {
+          role: 'assistant',
+          content: errorText
+        };
+        return [...prev, errorMessage];
+      });
+      setCurrentToolExecutions([]);
+    } finally {
+      setIsLoading(false);
+      streamingIndex.current = null;
+      isStreaming.current = false;
+      iterationCount.current = 0;
+    }
   };
 
   const handleCommandExecution = (action: string) => {
@@ -276,6 +385,10 @@ const ChatInterface: React.FC = () => {
         content: `Verbose mode ${newVerboseMode ? 'enabled' : 'disabled'}. ${newVerboseMode ? 'You will now see detailed execution logs in the terminal.' : ''}`
       };
       setMessages([...messages, statusMessage]);
+    } else if (action === 'init') {
+      setTimeout(() => {
+        executeInitCommand();
+      }, 100);
     }
 
     setTimeout(() => {
@@ -290,6 +403,18 @@ const ChatInterface: React.FC = () => {
     setSelectedIndex(0);
   };
 
+  const handleShortcutExecution = (action: string) => {
+    if (action === 'clear') {
+      setMessages([]);
+      setTokenCount(0);
+      if (orchestrator) {
+        orchestrator.resetContext();
+      }
+    } else if (action === 'clear-input') {
+      setInput('');
+    }
+  };
+
   const { resetExitState } = useKeyboardShortcuts({
     input,
     showShortcuts,
@@ -298,6 +423,8 @@ const ChatInterface: React.FC = () => {
     selectedIndex,
     shortcuts,
     commands,
+    filteredShortcuts,
+    filteredCommands,
     themeNames,
     onClearMessages: () => {
       setMessages([]);
@@ -314,12 +441,31 @@ const ChatInterface: React.FC = () => {
     onSelectItem: setInput,
     onShowCtrlCMessage: setShowCtrlCMessage,
     onExecuteCommand: handleCommandExecution,
+    onExecuteShortcut: handleShortcutExecution,
     onSelectTheme: handleThemeSelection
   });
 
   const handleSubmit = async (value: string) => {
     if (value.trim() && !isLoading) {
       const trimmedValue = value.trim();
+
+      const commandMatch = commands.find(cmd => cmd.name === trimmedValue);
+      if (commandMatch) {
+        handleCommandExecution(commandMatch.action);
+        setInput('');
+        return;
+      }
+
+      if (trimmedValue.startsWith('?')) {
+        const shortcutKey = trimmedValue.slice(1);
+        const shortcutMatch = shortcuts.find(sc => sc.key.toLowerCase() === shortcutKey.toLowerCase());
+        if (shortcutMatch) {
+          handleShortcutExecution(shortcutMatch.action);
+          setInput('');
+          return;
+        }
+      }
+
       historyService.addEntry(trimmedValue);
       setHistoryIndex(-1);
 
@@ -441,7 +587,7 @@ const ChatInterface: React.FC = () => {
       return 'Press Ctrl+C again to exit';
     }
     if (input === '') {
-      return '/ for commands';
+      return '/ for commands — ? for shortcuts';
     }
     if (input.startsWith('?')) {
       return '? for shortcuts';
@@ -496,7 +642,7 @@ const ChatInterface: React.FC = () => {
 
       {showShortcuts && (
         <DropdownMenu
-          items={shortcuts.map(s => ({ key: s.key, description: s.description }))}
+          items={filteredShortcuts.map(s => ({ key: s.key, description: s.description }))}
           selectedIndex={selectedIndex}
           theme={theme}
           title="Keyboard Shortcuts"
@@ -505,7 +651,7 @@ const ChatInterface: React.FC = () => {
 
       {showCommands && (
         <DropdownMenu
-          items={commands.map(c => ({ key: c.name, description: c.description }))}
+          items={filteredCommands.map(c => ({ key: c.name, description: c.description }))}
           selectedIndex={selectedIndex}
           theme={theme}
           title="Available Commands"
