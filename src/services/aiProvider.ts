@@ -432,9 +432,23 @@ export class AIProvider {
 
     try {
       const response = await this.ollamaClient.chat(this.config.model, messages, true);
-      const content = response.message?.content || '';
+      let content = response.message?.content || '';
+      let reasoning: string | undefined;
 
-      if (!content) {
+      if (this.isReasoningModel && content) {
+        const thinkingBlockRegex = /<think>[\s\S]*?<\/think>/g;
+        const thinkingBlocks = content.match(thinkingBlockRegex);
+
+        if (thinkingBlocks) {
+          reasoning = thinkingBlocks.map((block: string) =>
+            block.replace(/<\/?think>/g, '').trim()
+          ).join('\n\n');
+
+          content = content.replace(thinkingBlockRegex, '').trim();
+        }
+      }
+
+      if (!content && !reasoning) {
         throw new AIError({
           type: AIErrorType.API_ERROR,
           message: 'Ollama returned empty response',
@@ -444,7 +458,10 @@ export class AIProvider {
         });
       }
 
-      return { content };
+      return {
+        content,
+        reasoning
+      };
     } catch (error) {
       if (error instanceof AIError) {
         throw error;

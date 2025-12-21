@@ -1,8 +1,10 @@
 # Mosaic CLI
 
-Version 0.0.4.31
+Version 0.0.4.32
 
 Mosaic is a command-line interface for interacting with large language models directly from your terminal. It supports multiple AI providers and provides a straightforward way to integrate AI assistance into your workflow.
+
+I use the Mistral/Ollama API as my AI provider and Devstral 2 (123b) as my model; I recommend it for use with Mosaic. I've also noticed that using LLM models (reasoning models) is preferable rather than RLM models.
 
 ## Overview
 

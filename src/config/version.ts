@@ -9,9 +9,9 @@ export function getPackageVersion(): string {
   try {
     const packageJsonPath = join(__dirname, '../../package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    return packageJson.version || '0.0.4.31';
+    return packageJson.version || '0.0.4.32';
   } catch (error) {
     console.error('Error reading package.json version:', error);
-    return '0.0.4.31';
+    return '0.0.4.32';
   }
 }

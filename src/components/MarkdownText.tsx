@@ -200,10 +200,10 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ content, theme, withBullet 
     }
 
     return (
-      <Box>
+      <Box flexWrap="wrap">
         {parts.map((part, index) => (
           typeof part === 'string'
-            ? <Text key={`${keyPrefix}-seg-${index}`} color={theme.colors.text}>{part}</Text>
+            ? <Text key={`${keyPrefix}-seg-${index}`} color={theme.colors.text} wrap="wrap">{part}</Text>
             : React.cloneElement(part as React.ReactElement, { key: `${keyPrefix}-seg-${index}` })
         ))}
       </Box>

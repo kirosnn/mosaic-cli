@@ -151,6 +151,21 @@ export function isReasoningModelData(model: ModelData): boolean {
   return reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword));
 }
 
+export function getModelDataFromFallback(
+  providerKey: string,
+  modelId: string
+): ModelData | null {
+  const data = loadFallbackModels();
+  const providerData = data[providerKey];
+
+  if (!providerData || !providerData.models) {
+    return null;
+  }
+
+  const model = providerData.models[modelId];
+  return model || null;
+}
+
 export async function getModelCapabilitiesFromAPI(
   providerKey: string,
   modelId: string

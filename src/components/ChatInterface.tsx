@@ -42,6 +42,10 @@ const ChatInterface: React.FC = () => {
   const streamingIndex = useRef<number | null>(null);
   const isStreaming = useRef<boolean>(false);
   const iterationCount = useRef<number>(0);
+  const executionStartTime = useRef<number | null>(null);
+  const executedTools = useRef<any[]>([]);
+  const currentResponse = useRef<string>('');
+  const currentTokenCount = useRef<number>(0);
 
   const { pendingApproval, wrapToolExecution } = useToolApproval({
     onToolStart: (tool) => {
@@ -104,6 +108,7 @@ const ChatInterface: React.FC = () => {
         isStreaming.current = true;
         if (streamingIndex.current === null) {
           iterationCount.current = 0;
+          currentResponse.current = '';
           setMessages(prev => {
             const idx = prev.length;
             streamingIndex.current = idx;
@@ -117,6 +122,7 @@ const ChatInterface: React.FC = () => {
             if (updated[idx] && updated[idx].role === 'assistant') {
               const msg = updated[idx] as MessageWithTools;
               const separator = iterationCount.current > 0 && msg.content ? '\n\n' : '';
+              currentResponse.current = msg.content + separator;
               updated[idx] = {
                 role: 'assistant',
                 content: msg.content + separator,
@@ -145,6 +151,7 @@ const ChatInterface: React.FC = () => {
             }
 
             const cleanedContent = removeTitleFromContent(newContent);
+            currentResponse.current = cleanedContent;
 
             updated[idx] = {
               ...msg,
@@ -154,8 +161,21 @@ const ChatInterface: React.FC = () => {
           }
           return updated;
         });
-        setTokenCount(prev => prev + estimateTokens(delta));
+        const deltaTokens = estimateTokens(delta);
+        setTokenCount(prev => {
+          const newCount = prev + deltaTokens;
+          currentTokenCount.current = newCount;
+          return newCount;
+        });
       } else if (event.type === 'tool_executing') {
+        const toolName = event.data?.toolName || '';
+        executedTools.current.push({
+          name: toolName,
+          status: 'running',
+          parameters: event.data?.parameters,
+          timestamp: Date.now()
+        });
+
         if (streamingIndex.current !== null) {
           setMessages(prev => {
             const updated = [...prev];
@@ -163,7 +183,6 @@ const ChatInterface: React.FC = () => {
             const msg = updated[idx] as MessageWithTools;
             if (msg && msg.role === 'assistant') {
               const toolExecutions = msg.toolExecutions || [];
-              const toolName = event.data?.toolName || '';
               const currentContentLength = (msg.content || '').length;
               const newTool = {
                 name: toolName,
@@ -181,6 +200,19 @@ const ChatInterface: React.FC = () => {
           });
         }
       } else if (event.type === 'tool_success' || event.type === 'tool_error') {
+        const toolName = event.data?.toolName || '';
+        const toolIndex = executedTools.current.findIndex(
+          t => t.name === toolName && t.status === 'running'
+        );
+        if (toolIndex !== -1) {
+          executedTools.current[toolIndex] = {
+            ...executedTools.current[toolIndex],
+            status: event.type === 'tool_success' ? 'completed' : 'error',
+            result: event.type === 'tool_success'
+              ? (typeof event.data?.result === 'string' ? event.data.result.substring(0, 500) : JSON.stringify(event.data?.result).substring(0, 500))
+              : (event.data?.error ? String(event.data.error).substring(0, 500) : undefined)
+          };
+        }
         if (streamingIndex.current !== null) {
           setMessages(prev => {
             const updated = [...prev];
@@ -225,6 +257,7 @@ const ChatInterface: React.FC = () => {
               }
 
               const cleanedContent = removeTitleFromContent(finalContent);
+              currentResponse.current = cleanedContent;
 
               updated[idx] = {
                 ...msg,
@@ -304,6 +337,21 @@ const ChatInterface: React.FC = () => {
     };
     setMessages(prev => [...prev, initMessage]);
 
+    executionStartTime.current = Date.now();
+    executedTools.current = [];
+    currentResponse.current = '';
+    currentTokenCount.current = 0;
+
+    historyService.addEntry({
+      message: '/init',
+      timestamp: executionStartTime.current,
+      provider: provider ? {
+        type: provider.type,
+        model: provider.model,
+        baseUrl: provider.baseUrl
+      } : undefined
+    });
+
     setIsLoading(true);
     setCurrentToolExecutions([]);
     resetExitState();
@@ -311,15 +359,16 @@ const ChatInterface: React.FC = () => {
     try {
       const toolRegistry = orchestrator.getToolRegistry();
       const originalExecute = toolRegistry.execute.bind(toolRegistry);
-      const executedTools: ToolExecution[] = [];
+      const executedToolsForApproval: ToolExecution[] = [];
 
-      toolRegistry.execute = wrapToolExecution(originalExecute, executedTools);
+      toolRegistry.execute = wrapToolExecution(originalExecute, executedToolsForApproval);
 
       await orchestrator.executeTaskWithPlanning(MOSAIC_INIT_PROMPT);
 
       toolRegistry.execute = originalExecute;
       setCurrentToolExecutions([]);
 
+      let finalMessage = '';
       try {
         await fs.access(mosaicPath);
         const successMsg: MessageWithTools = {
@@ -327,13 +376,25 @@ const ChatInterface: React.FC = () => {
           content: `MOSAIC.md created successfully at: ${mosaicPath}`
         };
         setMessages(prev => [...prev, successMsg]);
+        finalMessage = successMsg.content;
       } catch {
         const warningMsg: MessageWithTools = {
           role: 'assistant',
           content: `Warning: MOSAIC.md was not created. Please try again.`
         };
         setMessages(prev => [...prev, warningMsg]);
+        finalMessage = warningMsg.content;
       }
+
+      const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
+
+      historyService.updateLastEntry({
+        response: currentResponse.current || finalMessage,
+        tools: executedTools.current,
+        tokenCount: currentTokenCount.current,
+        duration: duration,
+        success: true
+      });
 
     } catch (error) {
       const capturedStreamingIndex = streamingIndex.current;
@@ -361,11 +422,27 @@ const ChatInterface: React.FC = () => {
         return [...prev, errorMessage];
       });
       setCurrentToolExecutions([]);
+
+      const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
+
+      historyService.updateLastEntry({
+        response: errorText,
+        tools: executedTools.current,
+        tokenCount: currentTokenCount.current,
+        duration: duration,
+        success: false,
+        error: errorText
+      });
+
     } finally {
       setIsLoading(false);
       streamingIndex.current = null;
       isStreaming.current = false;
       iterationCount.current = 0;
+      executionStartTime.current = null;
+      executedTools.current = [];
+      currentResponse.current = '';
+      currentTokenCount.current = 0;
     }
   };
 
@@ -466,18 +543,32 @@ const ChatInterface: React.FC = () => {
         }
       }
 
-      historyService.addEntry(trimmedValue);
+      executionStartTime.current = Date.now();
+      executedTools.current = [];
+      currentResponse.current = '';
+      currentTokenCount.current = 0;
+
+      historyService.addEntry({
+        message: trimmedValue,
+        timestamp: executionStartTime.current,
+        provider: provider ? {
+          type: provider.type,
+          model: provider.model,
+          baseUrl: provider.baseUrl
+        } : undefined
+      });
       setHistoryIndex(-1);
 
       const userMessage: MessageWithTools = { role: 'user', content: trimmedValue };
       setMessages(prev => [...prev, userMessage]);
-      setTokenCount(estimateTokens(trimmedValue));
+
+      const userTokens = estimateTokens(trimmedValue);
+      setTokenCount(userTokens);
+      currentTokenCount.current = userTokens;
+
       setIsLoading(true);
       setInput('');
       resetExitState();
-
-      const userTokens = estimateTokens(trimmedValue);
-      setTokenCount(prev => prev + userTokens);
 
       if (!orchestrator) {
         const errorMessage: MessageWithTools = {
@@ -486,6 +577,15 @@ const ChatInterface: React.FC = () => {
         };
         setMessages(prev => [...prev, errorMessage]);
         setIsLoading(false);
+
+        historyService.updateLastEntry({
+          response: errorMessage.content,
+          success: false,
+          error: errorMessage.content,
+          duration: Date.now() - executionStartTime.current!,
+          tokenCount: currentTokenCount.current
+        });
+
         return;
       }
 
@@ -495,15 +595,25 @@ const ChatInterface: React.FC = () => {
       try {
         const toolRegistry = orchestrator.getToolRegistry();
         const originalExecute = toolRegistry.execute.bind(toolRegistry);
-        const executedTools: ToolExecution[] = [];
+        const executedToolsForApproval: ToolExecution[] = [];
 
-        toolRegistry.execute = wrapToolExecution(originalExecute, executedTools);
+        toolRegistry.execute = wrapToolExecution(originalExecute, executedToolsForApproval);
 
         const result = await orchestrator.executeTaskWithPlanning(value.trim());
 
         toolRegistry.execute = originalExecute;
 
         setCurrentToolExecutions([]);
+
+        const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
+
+        historyService.updateLastEntry({
+          response: currentResponse.current || (typeof result === 'string' ? result : result.response),
+          tools: executedTools.current,
+          tokenCount: currentTokenCount.current,
+          duration: duration,
+          success: true
+        });
 
       } catch (error) {
         const capturedStreamingIndex = streamingIndex.current;
@@ -531,11 +641,27 @@ const ChatInterface: React.FC = () => {
           return [...prev, errorMessage];
         });
         setCurrentToolExecutions([]);
+
+        const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
+
+        historyService.updateLastEntry({
+          response: errorText,
+          tools: executedTools.current,
+          tokenCount: currentTokenCount.current,
+          duration: duration,
+          success: false,
+          error: errorText
+        });
+
       } finally {
         setIsLoading(false);
         streamingIndex.current = null;
         isStreaming.current = false;
         iterationCount.current = 0;
+        executionStartTime.current = null;
+        executedTools.current = [];
+        currentResponse.current = '';
+        currentTokenCount.current = 0;
       }
     }
   };

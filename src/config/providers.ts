@@ -1,4 +1,4 @@
-import { getAllProvidersLatestModels, getModelCapabilitiesFromAPI } from '../utils/modelsFetcher.js';
+import { getAllProvidersLatestModels, getModelCapabilitiesFromAPI, getModelDataFromFallback, isReasoningModelData } from '../utils/modelsFetcher.js';
 
 export type ProviderType = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'xai' | 'mistral' | 'custom';
 
@@ -152,7 +152,24 @@ export const PROVIDERS: Record<ProviderType, ProviderOption> = {
   },
 };
 
+const PROVIDER_TO_API_KEY: Record<ProviderType, string> = {
+  'openai': 'openai',
+  'anthropic': 'anthropic',
+  'openrouter': 'openrouter',
+  'ollama': 'ollama-cloud',
+  'xai': 'xai',
+  'mistral': 'mistralai',
+  'custom': 'custom'
+};
+
 export function isReasoningModel(provider: ProviderType, model: string): boolean {
+  const apiKey = PROVIDER_TO_API_KEY[provider];
+  const modelData = getModelDataFromFallback(apiKey, model);
+
+  if (modelData) {
+    return isReasoningModelData(modelData);
+  }
+
   const providerOption = PROVIDERS[provider];
   if (!providerOption.supportsReasoning) {
     return false;

@@ -1,6 +1,6 @@
 {
   "name": "mosaic-cli",
-  "version": "0.0.4.31",
+  "version": "0.0.4.32",
   "description": "An AI-powered CLI code assistant",
   "type": "module",
   "main": "dist/index.js",
@@ -12,7 +12,8 @@
     "dev": "node --loader ts-node/esm src/index.tsx",
     "start": "node dist/index.js",
     "watch": "tsc --watch",
-    "update-models": "tsx scripts/updateModelsFallback.ts"
+    "update-models": "tsx scripts/updateModelsFallback.ts",
+    "test:system-prompt": "tsx tests/system-prompt-integrity/benchmark.ts"
   },
   "author": "kirosnn",
   "license": "MIT",

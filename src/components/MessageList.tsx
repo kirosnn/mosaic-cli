@@ -97,16 +97,18 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                 });
 
                 const tail = content.slice(cursor);
-                segments.push(
-                  <Box key={`text-tail-${index}-${cursor}`} paddingLeft={2}>
-                    <MarkdownText
-                      content={tail}
-                      theme={theme}
-                      withBullet={!bulletUsed}
-                      isStreaming={isStreaming && index === streamingMessageIndex}
-                    />
-                  </Box>
-                );
+                if (tail.length > 0 || (isStreaming && index === streamingMessageIndex)) {
+                  segments.push(
+                    <Box key={`text-tail-${index}-${cursor}`} paddingLeft={2}>
+                      <MarkdownText
+                        content={tail}
+                        theme={theme}
+                        withBullet={!bulletUsed}
+                        isStreaming={isStreaming && index === streamingMessageIndex}
+                      />
+                    </Box>
+                  );
+                }
 
                 if (unanchored.length > 0) {
                   segments.push(
