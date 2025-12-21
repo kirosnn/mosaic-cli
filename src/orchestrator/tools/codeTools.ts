@@ -52,40 +52,6 @@ export const executeShellTool: Tool = {
   }
 };
 
-export const executeNodeTool: Tool = {
-  name: 'execute_node',
-  description: 'Execute JavaScript/TypeScript code in Node.js',
-  parameters: [
-    {
-      name: 'code',
-      type: 'string',
-      description: 'JavaScript code to execute',
-      required: true
-    }
-  ],
-  execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
-    try {
-      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-      const fn = new AsyncFunction('context', params.code);
-
-      const result = await fn(context);
-
-      return {
-        success: true,
-        data: {
-          result: result,
-          type: typeof result
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Code execution failed'
-      };
-    }
-  }
-};
-
 export const searchCodeTool: Tool = {
   name: 'search_code',
   description: 'Search for a pattern in code files using regex. Automatically ignores common build/dependency directories unless explicitly included. Use regex patterns for flexible searching (e.g., "function\\s+\\w+" to find function declarations).',
@@ -258,56 +224,7 @@ export const searchCodeTool: Tool = {
   }
 };
 
-export const installPackageTool: Tool = {
-  name: 'install_package',
-  description: 'Install an npm package',
-  parameters: [
-    {
-      name: 'package',
-      type: 'string',
-      description: 'Package name to install',
-      required: true
-    },
-    {
-      name: 'dev',
-      type: 'boolean',
-      description: 'Install as dev dependency',
-      required: false,
-      default: false
-    }
-  ],
-  execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
-    try {
-      const devFlag = params.dev ? '--save-dev' : '';
-      const command = `npm install ${params.package} ${devFlag}`.trim();
-
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: context.workingDirectory
-      });
-
-      return {
-        success: true,
-        data: {
-          package: params.package,
-          output: stdout.trim(),
-          isDev: params.dev
-        }
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'Package installation failed',
-        data: {
-          stderr: error.stderr || ''
-        }
-      };
-    }
-  }
-};
-
 export const allCodeTools = [
   executeShellTool,
-  executeNodeTool,
-  searchCodeTool,
-  installPackageTool
+  searchCodeTool
 ];

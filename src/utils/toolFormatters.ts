@@ -32,13 +32,10 @@ export const formatToolName = (toolName: string): string => {
     'write_file': 'Write',
     'update_file': 'Update',
     'list_directory': 'List',
-    'create_directory': 'CreateDir',
     'delete_file': 'Delete',
     'file_exists': 'FileExists',
-    'execute_shell': 'Shell',
-    'execute_node': 'Node',
+    'execute_shell': 'Bash',
     'search_code': 'Search',
-    'install_package': 'Install',
     'explore_workspace': 'Explore'
   };
 
@@ -107,11 +104,6 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
           return `Found ${data.count} matches`;
         }
         break;
-      case 'install_package':
-        if (data.package) {
-          return `Installed ${data.package}`;
-        }
-        break;
     }
 
     if (typeof data === 'object') {
@@ -146,8 +138,6 @@ export const formatToolParameters = (toolName: string, parameters?: Record<strin
       return parameters.command || '';
     case 'search_code':
       return parameters.pattern || '';
-    case 'install_package':
-      return parameters.package || '';
     default:
       return '';
   }

@@ -12,7 +12,6 @@ const ToolApprovalPrompt: React.FC<ToolApprovalPromptProps> = ({ toolName, previ
     'write_file': 'Write File',
     'update_file': 'Update File',
     'delete_file': 'Delete File',
-    'create_directory': 'Create Directory',
     'execute_shell': 'Execute Shell Command'
   };
 

@@ -103,13 +103,10 @@ export class TaskPlanner {
           'write_file': 'Create a file with content specified in the request',
           'update_file': 'Update an existing file with new content',
           'list_directory': 'List directory contents to understand structure',
-          'create_directory': 'Create necessary directory structure',
           'delete_file': 'Remove specified file',
           'file_exists': 'Verify file existence before proceeding',
           'execute_shell': 'Execute shell command to accomplish task',
-          'execute_node': 'Execute Node.js code for processing',
           'search_code': 'Search codebase for relevant code',
-          'install_package': 'Install required npm package',
           'explore_workspace': 'Explore workspace to build context'
         };
 

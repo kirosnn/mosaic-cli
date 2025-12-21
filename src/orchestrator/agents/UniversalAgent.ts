@@ -12,13 +12,10 @@ export const universalAgent: Agent = {
     'write_file',
     'update_file',
     'list_directory',
-    'create_directory',
     'delete_file',
     'file_exists',
     'execute_shell',
-    'execute_node',
-    'search_code',
-    'install_package'
+    'search_code'
   ],
   temperature: 0.7,
   maxTokens: 16384

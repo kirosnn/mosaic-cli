@@ -2,6 +2,17 @@ export function setTerminalTitle(title: string): void {
   process.stdout.write(`\x1b]0;${title}\x07`);
 }
 
+export function clearTerminal(): void {
+  if (!process.stdout.isTTY) {
+    return;
+  }
+
+  process.stdout.write('\x1b[2J');
+  process.stdout.write('\x1b[3J');
+  process.stdout.write('\x1b[H');
+  process.stdout.write('\x1bc');
+}
+
 export function extractTitleFromResponse(content: string): string | null {
   const titleMatch = content.match(/<title>([^<]+)<\/title>/i);
   if (titleMatch && titleMatch[1]) {

@@ -222,7 +222,7 @@ async function chooseFilesToRead(workingDir: string, maxFiles: number): Promise<
         }
       }
     }
-  } catch {}
+  } catch { }
 
   return resolved.slice(0, maxFiles);
 }
@@ -287,7 +287,7 @@ async function analyzeProject(workingDir: string): Promise<ProjectAnalysis> {
           if (pkg.main) analysis.entryPoints.push(pkg.main);
           if (pkg.module) analysis.entryPoints.push(pkg.module);
           if (pkg.types) analysis.entryPoints.push(pkg.types);
-        } catch {}
+        } catch { }
       } else if (['tsconfig.json', 'jsconfig.json', '.eslintrc', '.prettierrc'].includes(file)) {
         analysis.configFiles.push(file);
       } else if (file === 'README.md' || file.startsWith('README')) {
@@ -335,7 +335,7 @@ async function analyzeProject(workingDir: string): Promise<ProjectAnalysis> {
             }
           }
         }
-      } catch {}
+      } catch { }
     };
 
     await scanDirectory(workingDir);

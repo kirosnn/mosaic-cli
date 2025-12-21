@@ -18,7 +18,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useToolApproval } from '../hooks/useToolApproval.js';
 import { historyService } from '../services/historyService.js';
 import { VerboseLogger } from '../utils/VerboseLogger.js';
-import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalTitle.js';
+import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalUtils.js';
 import { MOSAIC_INIT_PROMPT, getMosaicFilePath } from '../utils/mosaicContext.js';
 
 const version = getPackageVersion();

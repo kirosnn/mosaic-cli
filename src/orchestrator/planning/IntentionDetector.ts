@@ -125,9 +125,6 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       }
       requiredTools.push('read_file', 'write_file', 'file_exists');
     }
-    if (lowerRequest.includes('directory') || lowerRequest.includes('folder') || needsWorkspaceUnderstanding) {
-      requiredTools.push('list_directory', 'create_directory');
-    }
     if (lowerRequest.includes('execute') || lowerRequest.includes('run') || lowerRequest.includes('command')) {
       requiredTools.push('execute_shell');
     }

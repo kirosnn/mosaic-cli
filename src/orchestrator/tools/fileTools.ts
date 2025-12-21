@@ -196,44 +196,6 @@ export const listDirectoryTool: Tool = {
   }
 };
 
-export const createDirectoryTool: Tool = {
-  name: 'create_directory',
-  description: 'Create a new directory',
-  parameters: [
-    {
-      name: 'path',
-      type: 'string',
-      description: 'Path to the directory to create',
-      required: true
-    },
-    {
-      name: 'recursive',
-      type: 'boolean',
-      description: 'Create parent directories if they do not exist',
-      required: false,
-      default: true
-    }
-  ],
-  execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
-    try {
-      const dirPath = path.resolve(context.workingDirectory, params.path);
-      await fs.mkdir(dirPath, { recursive: params.recursive ?? true });
-
-      return {
-        success: true,
-        data: {
-          path: dirPath
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create directory'
-      };
-    }
-  }
-};
-
 export const deleteFileTool: Tool = {
   name: 'delete_file',
   description: 'Delete a file',
@@ -313,7 +275,6 @@ export const allFileTools = [
   writeFileTool,
   updateFileTool,
   listDirectoryTool,
-  createDirectoryTool,
   deleteFileTool,
   fileExistsTool
 ];

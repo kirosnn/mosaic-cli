@@ -5,7 +5,7 @@ import { resolve, isAbsolute } from 'path';
 import { statSync } from 'fs';
 import App from './components/App.js';
 import { ensureMosaicDir } from './config/index.js';
-import { setTerminalTitle } from './utils/terminalTitle.js';
+import { setTerminalTitle, clearTerminal } from './utils/terminalUtils.js';
 import { updateProvidersWithLatestModels } from './config/providers.js';
 
 const args = process.argv.slice(2);
@@ -30,6 +30,8 @@ if (args.length > 0) {
 ensureMosaicDir();
 
 updateProvidersWithLatestModels().catch(() => {});
+
+clearTerminal();
 
 setTerminalTitle('✹ Mosaic');
 
