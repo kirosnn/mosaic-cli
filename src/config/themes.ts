@@ -63,7 +63,7 @@ export const themes: Record<string, Theme> = {
     name: 'Dark',
     colors: {
       primary: '#E0E0E0',
-      secondary: '#A0A0A0',
+      secondary: '#858585ff',
       accent: '#66B2FF',
       text: '#FFFFFF',
       background: '#000000',

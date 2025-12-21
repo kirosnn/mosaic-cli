@@ -26,7 +26,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
       {messages.map((msg, index) => (
         <Box key={index} marginBottom={1} flexDirection="column">
           {msg.role === 'user' ? (
-            <Text color={theme.colors.text}>{msg.content}</Text>
+            <Text color={theme.colors.text} backgroundColor={theme.colors.secondary}>{`> ${msg.content}`}</Text>
           ) : (
             <>
               {(() => {

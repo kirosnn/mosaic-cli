@@ -5,7 +5,11 @@ export {
   updateConfig,
   getConfigValue,
   setConfigValue,
+  addToModelHistory,
+  getModelHistory,
   type MosaicConfig,
+  type ModelHistoryItem,
+  type SavedProvider,
 } from './manager.js';
 export { getPackageVersion } from './version.js';
 export { themes, getTheme, getThemeNames, type Theme } from './themes.js';

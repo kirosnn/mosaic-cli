@@ -16,7 +16,7 @@ The interface is text-based and designed to work in any terminal environment. Re
 
 - **Multiple Provider Support**: Connect to OpenAI, Anthropic, OpenRouter, Ollama, or any OpenAI-compatible API
 - **Terminal Interface**: Built with React and Ink for a responsive terminal UI
-- **Markdown Rendering**: Code blocks, lists, and formatting are properly displayed in the terminal
+- **Markdown Rendering**: Code blocks, lists, and formatting are properly displayed in the terminal 
 - **Customizable System Prompts**: Define AI behavior using a markdown file with support for dynamic placeholders
 - **Secure Storage**: API keys are encrypted and stored locally
 - **Theme Support**: Several color schemes available to match your terminal preferences

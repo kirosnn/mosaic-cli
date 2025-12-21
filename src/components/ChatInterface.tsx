@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig } from '../config/index.js';
+import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig, getModelHistory, addToModelHistory } from '../config/index.js';
 import { shortcuts, commands } from '../config/shortcuts.js';
+import { getProviderTypes, PROVIDERS, getProviderOption } from '../config/providers.js';
 import { Orchestrator, universalAgent, allTools } from '../orchestrator/index.js';
 import { ToolExecution, MessageWithTools } from '../types/toolExecution.js';
 import { formatToolName, formatToolResult } from '../utils/toolFormatters.js';
@@ -30,10 +31,18 @@ const ChatInterface: React.FC = () => {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [showProviderSelector, setShowProviderSelector] = useState(false);
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [customModelInput, setCustomModelInput] = useState('');
+  const [isAddingCustomModel, setIsAddingCustomModel] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [currentToolExecutions, setCurrentToolExecutions] = useState<ToolExecution[]>([]);
   const [currentThemeName, setCurrentThemeName] = useState<string>('default');
+  const [currentProvider, setCurrentProvider] = useState(() => {
+    const config = loadConfig();
+    return config.provider;
+  });
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [verboseMode, setVerboseMode] = useState<boolean>(false);
   const [tokenCount, setTokenCount] = useState<number>(0);
@@ -64,11 +73,49 @@ const ChatInterface: React.FC = () => {
     }
   });
 
-  const config = loadConfig();
-  const provider = config.provider;
   const currentDir = process.cwd();
   const theme = getTheme(currentThemeName);
   const themeNames = getThemeNames();
+
+  const providerTypes = useMemo(() => getProviderTypes(), []);
+  const providerNames = useMemo(() => providerTypes.map(type => ({
+    type,
+    name: PROVIDERS[type].name
+  })), [providerTypes]);
+
+  const availableModels = useMemo(() => {
+    if (!currentProvider) return [];
+
+    const models: Array<{ key: string; description: string; isHistory?: boolean; isSeparator?: boolean; isCustom?: boolean }> = [];
+
+    models.push({ key: '__custom__', description: 'Add custom model...', isCustom: true });
+
+    const history = getModelHistory();
+    const recentModels = history.slice(0, 5);
+
+    if (recentModels.length > 0) {
+      recentModels.forEach(item => {
+        const providerName = PROVIDERS[item.providerType]?.name || item.providerType;
+        models.push({
+          key: `${item.providerType}:${item.model}`,
+          description: `${item.model} (${providerName})`,
+          isHistory: true
+        });
+      });
+
+      models.push({ key: '__separator__', description: '───────────────────', isSeparator: true });
+    }
+
+    const providerOption = getProviderOption(currentProvider.type);
+    providerOption.defaultModels.forEach(model => {
+      models.push({
+        key: model,
+        description: model
+      });
+    });
+
+    return models;
+  }, [currentProvider]);
 
   const filteredCommands = useMemo(() => {
     if (!input.startsWith('/')) return commands;
@@ -89,9 +136,9 @@ const ChatInterface: React.FC = () => {
   }, []);
 
   const orchestrator = useMemo(() => {
-    if (!provider) return null;
+    if (!currentProvider) return null;
 
-    const orch = new Orchestrator(provider, {
+    const orch = new Orchestrator(currentProvider, {
       maxIterations: 10,
       enableToolChaining: true,
       toolTimeout: 30000,
@@ -276,7 +323,7 @@ const ChatInterface: React.FC = () => {
     });
 
     return orch;
-  }, []);
+  }, [currentProvider]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -345,10 +392,10 @@ const ChatInterface: React.FC = () => {
     historyService.addEntry({
       message: '/init',
       timestamp: executionStartTime.current,
-      provider: provider ? {
-        type: provider.type,
-        model: provider.model,
-        baseUrl: provider.baseUrl
+      provider: currentProvider ? {
+        type: currentProvider.type,
+        model: currentProvider.model,
+        baseUrl: currentProvider.baseUrl
       } : undefined
     });
 
@@ -452,6 +499,12 @@ const ChatInterface: React.FC = () => {
     if (action === 'theme') {
       setShowThemeSelector(true);
       setSelectedIndex(0);
+    } else if (action === 'provider') {
+      setShowProviderSelector(true);
+      setSelectedIndex(0);
+    } else if (action === 'model') {
+      setShowModelSelector(true);
+      setSelectedIndex(0);
     } else if (action === 'verbose') {
       const newVerboseMode = !verboseMode;
       setVerboseMode(newVerboseMode);
@@ -480,6 +533,116 @@ const ChatInterface: React.FC = () => {
     setSelectedIndex(0);
   };
 
+  const handleProviderSelection = (providerType: string) => {
+    const providerOption = getProviderOption(providerType as any);
+    const currentConfig = loadConfig();
+    const defaultModel = providerOption.defaultModels[0] || '';
+
+    const newProvider = {
+      type: providerType as any,
+      model: defaultModel,
+      baseUrl: currentConfig.provider?.baseUrl
+    };
+
+    updateConfig({
+      provider: newProvider
+    });
+
+    setCurrentProvider(newProvider);
+
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: `Provider changed to ${providerOption.name} with model ${defaultModel}. Orchestrator reloaded.`
+    };
+    setMessages([...messages, statusMessage]);
+
+    setShowProviderSelector(false);
+    setSelectedIndex(0);
+  };
+
+  const handleModelSelection = (modelKey: string) => {
+    const currentConfig = loadConfig();
+    if (!currentConfig.provider) return;
+
+    if (modelKey === '__custom__') {
+      setIsAddingCustomModel(true);
+      setCustomModelInput('');
+      setShowModelSelector(false);
+      return;
+    }
+
+    if (modelKey === '__separator__') {
+      return;
+    }
+
+    let finalProviderType = currentConfig.provider.type;
+    let finalModel = modelKey;
+
+    if (modelKey.includes(':')) {
+      const [historyProviderType, historyModel] = modelKey.split(':');
+      finalProviderType = historyProviderType as any;
+      finalModel = historyModel;
+    }
+
+    const newProvider = {
+      ...currentConfig.provider,
+      type: finalProviderType,
+      model: finalModel
+    };
+
+    updateConfig({
+      provider: newProvider
+    });
+
+    setCurrentProvider(newProvider);
+
+    addToModelHistory(finalProviderType, finalModel);
+
+    const providerName = PROVIDERS[finalProviderType]?.name || finalProviderType;
+    const providerChanged = finalProviderType !== currentConfig.provider.type;
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: `Model changed to ${finalModel}${providerChanged ? ` (${providerName})` : ''}. Orchestrator reloaded.`
+    };
+    setMessages([...messages, statusMessage]);
+
+    setShowModelSelector(false);
+    setSelectedIndex(0);
+  };
+
+  const handleCustomModelSubmit = () => {
+    const currentConfig = loadConfig();
+    if (!currentConfig.provider || !customModelInput.trim()) {
+      setIsAddingCustomModel(false);
+      setCustomModelInput('');
+      return;
+    }
+
+    const model = customModelInput.trim();
+
+    const newProvider = {
+      ...currentConfig.provider,
+      model
+    };
+
+    updateConfig({
+      provider: newProvider
+    });
+
+    setCurrentProvider(newProvider);
+
+    addToModelHistory(currentConfig.provider.type, model);
+
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: `Model changed to ${model}. Orchestrator reloaded.`
+    };
+    setMessages([...messages, statusMessage]);
+
+    setIsAddingCustomModel(false);
+    setCustomModelInput('');
+  };
+
   const handleShortcutExecution = (action: string) => {
     if (action === 'clear') {
       setMessages([]);
@@ -492,17 +655,36 @@ const ChatInterface: React.FC = () => {
     }
   };
 
+  useInput((inputChar, key) => {
+    if (!isAddingCustomModel) return;
+
+    if (key.return) {
+      handleCustomModelSubmit();
+    } else if (key.escape) {
+      setIsAddingCustomModel(false);
+      setCustomModelInput('');
+    } else if (key.backspace || key.delete) {
+      setCustomModelInput(prev => prev.slice(0, -1));
+    } else if (inputChar && !key.ctrl && !key.meta) {
+      setCustomModelInput(prev => prev + inputChar);
+    }
+  });
+
   const { resetExitState } = useKeyboardShortcuts({
     input,
     showShortcuts,
     showCommands,
     showThemeSelector,
+    showProviderSelector,
+    showModelSelector,
     selectedIndex,
     shortcuts,
     commands,
     filteredShortcuts,
     filteredCommands,
     themeNames,
+    providerNames,
+    availableModels,
     onClearMessages: () => {
       setMessages([]);
       setTokenCount(0);
@@ -514,12 +696,16 @@ const ChatInterface: React.FC = () => {
     onShowShortcuts: setShowShortcuts,
     onShowCommands: setShowCommands,
     onShowThemeSelector: setShowThemeSelector,
+    onShowProviderSelector: setShowProviderSelector,
+    onShowModelSelector: setShowModelSelector,
     onSelectIndex: setSelectedIndex,
     onSelectItem: setInput,
     onShowCtrlCMessage: setShowCtrlCMessage,
     onExecuteCommand: handleCommandExecution,
     onExecuteShortcut: handleShortcutExecution,
-    onSelectTheme: handleThemeSelection
+    onSelectTheme: handleThemeSelection,
+    onSelectProvider: handleProviderSelection,
+    onSelectModel: handleModelSelection
   });
 
   const handleSubmit = async (value: string) => {
@@ -551,10 +737,10 @@ const ChatInterface: React.FC = () => {
       historyService.addEntry({
         message: trimmedValue,
         timestamp: executionStartTime.current,
-        provider: provider ? {
-          type: provider.type,
-          model: provider.model,
-          baseUrl: provider.baseUrl
+        provider: currentProvider ? {
+          type: currentProvider.type,
+          model: currentProvider.model,
+          baseUrl: currentProvider.baseUrl
         } : undefined
       });
       setHistoryIndex(-1);
@@ -727,7 +913,7 @@ const ChatInterface: React.FC = () => {
     <Box flexDirection="column">
       <ChatHeader
         version={version}
-        provider={provider}
+        provider={currentProvider}
         currentDir={currentDir}
         theme={theme}
       />
@@ -753,17 +939,33 @@ const ChatInterface: React.FC = () => {
         )}
       </Box>
 
-      {!pendingApproval && (
+      {!pendingApproval && !isAddingCustomModel && (
         <ChatInput
           input={input}
           terminalWidth={terminalWidth}
           helpText={helpText}
           theme={theme}
-          isMenuOpen={showShortcuts || showCommands || showThemeSelector}
+          isMenuOpen={showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
           onHistoryNavigation={handleHistoryNavigation}
         />
+      )}
+
+      {isAddingCustomModel && (
+        <Box flexDirection="column" paddingX={1} paddingY={1}>
+          <Box marginBottom={1}>
+            <Text color={theme.colors.text}>Enter custom model name:</Text>
+          </Box>
+          <Box>
+            <Text color={theme.colors.primary}>&gt; </Text>
+            <Text color={theme.colors.text}>{customModelInput}</Text>
+            <Text color={theme.colors.text}>█</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Press Enter to confirm, Esc to cancel</Text>
+          </Box>
+        </Box>
       )}
 
       {showShortcuts && (
@@ -790,6 +992,24 @@ const ChatInterface: React.FC = () => {
           selectedIndex={selectedIndex}
           theme={theme}
           title="Select Theme"
+        />
+      )}
+
+      {showProviderSelector && (
+        <DropdownMenu
+          items={providerNames.map(p => ({ key: p.type, description: p.name }))}
+          selectedIndex={selectedIndex}
+          theme={theme}
+          title="Select Provider"
+        />
+      )}
+
+      {showModelSelector && (
+        <DropdownMenu
+          items={availableModels}
+          selectedIndex={selectedIndex}
+          theme={theme}
+          title="Select Model"
         />
       )}
     </Box>

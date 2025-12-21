@@ -3,6 +3,19 @@ import { CONFIG_FILE, ensureMosaicDir } from './paths.js';
 import { getPackageVersion } from './version.js';
 import { ProviderType } from './providers.js';
 
+export interface SavedProvider {
+  name: string;
+  type: ProviderType;
+  model: string;
+  baseUrl?: string;
+}
+
+export interface ModelHistoryItem {
+  providerType: ProviderType;
+  model: string;
+  lastUsed: number;
+}
+
 export interface MosaicConfig {
   version?: string;
   theme?: string;
@@ -12,6 +25,8 @@ export interface MosaicConfig {
     model: string;
     baseUrl?: string;
   };
+  savedProviders?: SavedProvider[];
+  modelHistory?: ModelHistoryItem[];
   [key: string]: any;
 }
 
@@ -61,4 +76,37 @@ export function getConfigValue<K extends keyof MosaicConfig>(key: K): MosaicConf
 
 export function setConfigValue<K extends keyof MosaicConfig>(key: K, value: MosaicConfig[K]): void {
   updateConfig({ [key]: value });
+}
+
+export function addToModelHistory(providerType: ProviderType, model: string): void {
+  const config = loadConfig();
+  const history = config.modelHistory || [];
+
+  const existingIndex = history.findIndex(
+    item => item.providerType === providerType && item.model === model
+  );
+
+  if (existingIndex !== -1) {
+    history[existingIndex].lastUsed = Date.now();
+  } else {
+    history.push({
+      providerType,
+      model,
+      lastUsed: Date.now()
+    });
+  }
+
+  history.sort((a, b) => b.lastUsed - a.lastUsed);
+
+  const maxHistorySize = 20;
+  if (history.length > maxHistorySize) {
+    history.splice(maxHistorySize);
+  }
+
+  updateConfig({ modelHistory: history });
+}
+
+export function getModelHistory(): ModelHistoryItem[] {
+  const config = loadConfig();
+  return config.modelHistory || [];
 }

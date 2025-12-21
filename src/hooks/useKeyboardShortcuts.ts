@@ -6,23 +6,31 @@ interface UseKeyboardShortcutsProps {
   showShortcuts: boolean;
   showCommands: boolean;
   showThemeSelector?: boolean;
+  showProviderSelector?: boolean;
+  showModelSelector?: boolean;
   selectedIndex: number;
   shortcuts: any[];
   commands: any[];
   filteredShortcuts?: any[];
   filteredCommands?: any[];
   themeNames?: string[];
+  providerNames?: any[];
+  availableModels?: Array<{ key: string; description: string; isHistory?: boolean; isSeparator?: boolean; isCustom?: boolean }>;
   onClearMessages: () => void;
   onClearInput: () => void;
   onShowShortcuts: (show: boolean) => void;
   onShowCommands: (show: boolean) => void;
   onShowThemeSelector?: (show: boolean) => void;
+  onShowProviderSelector?: (show: boolean) => void;
+  onShowModelSelector?: (show: boolean) => void;
   onSelectIndex: (index: number) => void;
   onSelectItem: (item: string) => void;
   onShowCtrlCMessage: (show: boolean) => void;
   onExecuteCommand?: (action: string) => void;
   onExecuteShortcut?: (action: string) => void;
   onSelectTheme?: (themeName: string) => void;
+  onSelectProvider?: (providerType: string) => void;
+  onSelectModel?: (model: string) => void;
 }
 
 export const useKeyboardShortcuts = ({
@@ -30,23 +38,31 @@ export const useKeyboardShortcuts = ({
   showShortcuts,
   showCommands,
   showThemeSelector = false,
+  showProviderSelector = false,
+  showModelSelector = false,
   selectedIndex,
   shortcuts,
   commands,
   filteredShortcuts = [],
   filteredCommands = [],
   themeNames = [],
+  providerNames = [],
+  availableModels = [],
   onClearMessages,
   onClearInput,
   onShowShortcuts,
   onShowCommands,
   onShowThemeSelector,
+  onShowProviderSelector,
+  onShowModelSelector,
   onSelectIndex,
   onSelectItem,
   onShowCtrlCMessage,
   onExecuteCommand,
   onExecuteShortcut,
-  onSelectTheme
+  onSelectTheme,
+  onSelectProvider,
+  onSelectModel
 }: UseKeyboardShortcutsProps) => {
   const { exit } = useApp();
   const exitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -75,7 +91,7 @@ export const useKeyboardShortcuts = ({
       return;
     }
 
-    if (showShortcuts || showCommands || showThemeSelector) {
+    if (showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector) {
       let items: any[] = [];
 
       if (showShortcuts) {
@@ -84,6 +100,10 @@ export const useKeyboardShortcuts = ({
         items = filteredCommands.length > 0 ? filteredCommands : commands;
       } else if (showThemeSelector) {
         items = themeNames.map(name => ({ key: name, description: `Switch to ${name} theme` }));
+      } else if (showProviderSelector) {
+        items = providerNames.map(p => ({ key: p.type, description: p.name }));
+      } else if (showModelSelector) {
+        items = availableModels;
       }
 
       if (key.downArrow) {
@@ -145,12 +165,32 @@ export const useKeyboardShortcuts = ({
           }
           onSelectIndex(0);
           onClearInput();
+        } else if (showProviderSelector && onSelectProvider) {
+          onSelectProvider((items[selectedIndex] as any).key);
+          if (onShowProviderSelector) {
+            onShowProviderSelector(false);
+          }
+          onSelectIndex(0);
+          onClearInput();
+        } else if (showModelSelector && onSelectModel) {
+          onSelectModel((items[selectedIndex] as any).key);
+          if (onShowModelSelector) {
+            onShowModelSelector(false);
+          }
+          onSelectIndex(0);
+          onClearInput();
         }
       } else if (key.escape) {
         onShowShortcuts(false);
         onShowCommands(false);
         if (onShowThemeSelector) {
           onShowThemeSelector(false);
+        }
+        if (onShowProviderSelector) {
+          onShowProviderSelector(false);
+        }
+        if (onShowModelSelector) {
+          onShowModelSelector(false);
         }
         onSelectIndex(0);
       }

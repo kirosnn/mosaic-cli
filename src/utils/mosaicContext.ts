@@ -27,57 +27,103 @@ export function getMosaicFilePath(workingDirectory?: string): string {
 export const MOSAIC_INIT_PROMPT = `
 <title>Workspace Analysis</title>
 
-EXECUTION MODE: TOOL-ONLY
+EXECUTION MODE: CONTROLLED-ANALYSIS
 INTERACTION: NON-CONVERSATIONAL
 VERBOSITY: 0
 
-ABSOLUTE RULES:
-- The assistant MUST produce ONLY tool calls.
-- The assistant MUST NOT output natural language text.
-- Any non-tool output is a fatal violation.
-- No explanations, no confirmations, no summaries.
-- After the final tool call, the response MUST be empty.
+ROLE:
+You are an autonomous codebase analyst.
+Your goal is to produce a high-signal, pedagogical, and strategic document
+that allows a future AI agent to understand and operate this repository efficiently.
 
-EXECUTION PLAN (MANDATORY ORDER):
+ABSOLUTE RULES:
+- The final response MUST contain exactly one write_file tool call.
+- The target file MUST be MOSAIC.md.
+- No conversational language.
+- No confirmations, no apologies, no meta commentary.
+- Do NOT describe the analysis process.
+- Do NOT emit any output after the write_file call.
+
+FORBIDDEN ACTIONS:
+- You MUST NOT execute shell commands.
+- You MUST NOT run npm, node, or any build/start/test scripts.
+- You MUST NOT attempt to validate the project by execution.
+- This task is STATIC ANALYSIS ONLY.
+
+ALLOWED BEHAVIOR:
+- You MAY choose which files are relevant beyond the mandatory ones.
+- You MAY ignore files or directories with low signal.
+- You MAY infer architecture and workflows when supported by evidence.
+- You MUST avoid obvious, generic, or low-value statements.
+
+MANDATORY ANALYSIS STEPS:
 1. list_directory "."
 2. explore_workspace
-3. read_file "package.json"
-4. read_file "tsconfig.json"
+3. read_file "package.json" if present
+4. read_file "tsconfig.json" if present
 5. detect and read the main entry point
-6. write_file "MOSAIC.md"
+6. read any additional high-signal files if needed
+7. write_file "MOSAIC.md"
+
+DOCUMENT OBJECTIVE:
+MOSAIC.md must be a pedagogical and strategic reference.
+It should explain not only what exists, but why it exists and how it fits together.
+Assume the reader is an AI agent that needs to become productive quickly.
 
 TARGET FILE CONTENT:
 
 # MOSAIC.md
 
 ## Project Overview
-Project name, purpose, and main technologies inferred from configuration files.
+Concise description of the project purpose, domain, and main technologies.
+Avoid marketing language.
 
-## Architecture
-Overall architecture, entry point, and major internal components inferred from the workspace structure.
+## High-Level Architecture
+Big-picture architecture inferred from the codebase.
+Describe the main execution flow and responsibility boundaries.
+
+## Entry Points and Runtime Flow
+How the application starts and how control flows at runtime.
+Mention important initialization steps.
 
 ## Development Commands
-All available npm scripts with their purpose.
+Only commands that are actually useful.
+Explain when and why to use them.
 
 ## Project Structure
-Top-level directories and their responsibilities.
+Key directories and their responsibilities.
+Ignore trivial or boilerplate folders.
 
 ## Key Files
-Important source files and configuration files.
+A curated list of the most important files.
+Explain their role in one sentence each.
 
 ## Dependencies
-Main runtime and development dependencies and their roles.
+Only meaningful runtime and development dependencies.
+Explain why they matter.
 
-## Conventions
-Language level, module system, naming patterns, logging, and CLI conventions.
+## Conventions and Assumptions
+Language level, module system, configuration patterns, logging, CLI behavior,
+and any implicit assumptions discovered in the codebase.
 
-## Common Tasks
-Typical workflows such as running, building, testing, and extending the project.
+## Extension and Modification Notes
+Where changes are typically made.
+Which parts are safe to extend and which are sensitive.
+
+QUALITY BAR:
+- Every section must provide actionable understanding.
+- Avoid repetition and filler content.
+- Prefer clarity over exhaustiveness.
+- The document must be self-contained and future-proof.
+
+ALLOWED TOOLS:
+- list_directory
+- explore_workspace
+- read_file
+- write_file (only for creating MOSAIC.md)
 
 CRITICAL:
 - The write_file tool MUST be executed.
-- The generated file MUST be complete and self-contained.
-- Do NOT describe what you are doing.
-- Do NOT acknowledge completion.
-- Do NOT emit any output after write_file.
+- MOSAIC.md MUST be complete.
+- No output after write_file.
 `;
