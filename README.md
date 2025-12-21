@@ -52,6 +52,12 @@ On first run, you'll be guided through a setup process:
 
 Once configured, you can start sending messages to the AI model. Type your question or prompt and press Enter to receive a response.
 
+If you want to open **mosaic** in a specific directory, you can pass the directory path as an argument:
+
+```bash
+mosaic /path/to/directory
+```
+
 ## Configuration
 
 Configuration files are stored in `~/.mosaic/`:
