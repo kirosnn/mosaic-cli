@@ -2,6 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const MOSAIC_FILE = 'MOSAIC.md';
+const MOSAIC_CONFIG_FILE = 'mosaic.jsonc';
+
+export interface WorkspaceConfig {
+  workspaceRoot?: string;
+  enablePlanning?: boolean;
+  requestsPerSecond?: number;
+}
 
 export function loadMosaicContext(workingDirectory?: string): string | null {
   try {
@@ -24,6 +31,63 @@ export function getMosaicFilePath(workingDirectory?: string): string {
   return path.join(cwd, MOSAIC_FILE);
 }
 
+export function getWorkspaceConfigPath(workingDirectory?: string): string {
+  const cwd = workingDirectory || process.cwd();
+  return path.join(cwd, MOSAIC_CONFIG_FILE);
+}
+
+export function loadWorkspaceConfig(workingDirectory?: string): WorkspaceConfig {
+  try {
+    const configPath = getWorkspaceConfigPath(workingDirectory);
+
+    if (!fs.existsSync(configPath)) {
+      return {};
+    }
+
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const cleanedContent = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const config = JSON.parse(cleanedContent) as WorkspaceConfig;
+    return config;
+  } catch (error) {
+    return {};
+  }
+}
+
+export function saveWorkspaceConfig(config: WorkspaceConfig, workingDirectory?: string): void {
+  try {
+    const configPath = getWorkspaceConfigPath(workingDirectory);
+    const cwd = workingDirectory || process.cwd();
+
+    const fullConfig: WorkspaceConfig = {
+      workspaceRoot: config.workspaceRoot || cwd,
+      ...config
+    };
+
+    const lines: string[] = ['{'];
+    const entries: string[] = [];
+
+    if (fullConfig.workspaceRoot) {
+      entries.push(`  "workspaceRoot": ${JSON.stringify(fullConfig.workspaceRoot)}`);
+    }
+
+    if (fullConfig.enablePlanning !== undefined) {
+      entries.push(`  "enablePlanning": ${fullConfig.enablePlanning}`);
+    }
+
+    if (fullConfig.requestsPerSecond !== undefined) {
+      entries.push(`  "requestsPerSecond": ${fullConfig.requestsPerSecond}`);
+    }
+
+    lines.push(entries.join(',\n'));
+    lines.push('}');
+    lines.push('');
+
+    fs.writeFileSync(configPath, lines.join('\n'), 'utf-8');
+  } catch (error) {
+    console.error('Failed to save workspace config:', error);
+  }
+}
+
 export const MOSAIC_INIT_PROMPT = `
 <title>Workspace Analysis</title>
 
@@ -43,6 +107,7 @@ ABSOLUTE RULES:
 - No confirmations, no apologies, no meta commentary.
 - Do NOT describe the analysis process.
 - Do NOT emit any output after the write_file call.
+- If the file already exists, offer the user the option to improve it or delete it to start a new one.
 
 FORBIDDEN ACTIONS:
 - You MUST NOT execute shell commands.
