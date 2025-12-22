@@ -12,8 +12,15 @@ export interface IntentionAnalysis {
 export class IntentionDetector {
   private aiProvider: AIProvider;
 
-  constructor(aiProvider: AIProvider) {
+  private reportTokenUsage?: (tokens: number, source: string) => void;
+
+  constructor(aiProvider: AIProvider, reportTokenUsage?: (tokens: number, source: string) => void) {
     this.aiProvider = aiProvider;
+    this.reportTokenUsage = reportTokenUsage;
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
   }
 
   async analyzeIntent(userRequest: string, availableTools: string[]): Promise<IntentionAnalysis> {
@@ -58,6 +65,11 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
     ];
 
     const response = await this.aiProvider.sendMessage(messages);
+
+    const promptText = messages.map(m => m.content).join('\n');
+    const promptTokens = this.estimateTokens(promptText);
+    const responseTokens = this.estimateTokens(response.content || '');
+    this.reportTokenUsage?.(promptTokens + responseTokens, 'intention_analysis');
 
     if (response.error) {
       return this.getDefaultAnalysis(userRequest, availableTools);

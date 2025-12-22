@@ -90,7 +90,8 @@ export type OrchestratorEventType =
   | 'tool_success'
   | 'tool_error'
   | 'final_response'
-  | 'error';
+  | 'error'
+  | 'token_usage';
 
 export interface OrchestratorEvent {
   type: OrchestratorEventType;

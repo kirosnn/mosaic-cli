@@ -58,12 +58,18 @@ ALLOWED BEHAVIOR:
 
 MANDATORY ANALYSIS STEPS:
 1. list_directory "."
-2. explore_workspace
-3. read_file "package.json" if present
-4. read_file "tsconfig.json" if present
-5. detect and read the main entry point
-6. read any additional high-signal files if needed
+2. explore_workspace (maxDepth: 2, maxFiles: 3, maxPreviewLines: 10)
+3. read_file "package.json" (limit: 50) if present
+4. read_file "tsconfig.json" (limit: 30) if present
+5. detect and read the main entry point (limit: 50)
+6. read any additional high-signal files if needed (limit: 30 each)
 7. write_file "MOSAIC.md"
+
+TOKEN OPTIMIZATION:
+- Use limit parameter on read_file to read only the most relevant lines
+- Keep explore_workspace parameters low: maxFiles=3, maxPreviewLines=10
+- Prioritize breadth over depth: read multiple files partially rather than few files completely
+- You are allowed to read 5 files at most.
 
 DOCUMENT OBJECTIVE:
 MOSAIC.md must be a pedagogical and strategic reference.

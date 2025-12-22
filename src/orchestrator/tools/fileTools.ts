@@ -4,13 +4,26 @@ import * as path from 'path';
 
 export const readFileTool: Tool = {
   name: 'read_file',
-  description: 'Read the contents of a file',
+  description: 'Read the contents of a file. Use offset and limit parameters to read only specific lines and reduce token usage.',
   parameters: [
     {
       name: 'path',
       type: 'string',
       description: 'Path to the file to read',
       required: true
+    },
+    {
+      name: 'offset',
+      type: 'number',
+      description: 'Line number to start reading from (0-based). Default: 0',
+      required: false,
+      default: 0
+    },
+    {
+      name: 'limit',
+      type: 'number',
+      description: 'Maximum number of lines to read. Default: unlimited (reads entire file)',
+      required: false
     }
   ],
   execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
@@ -18,11 +31,36 @@ export const readFileTool: Tool = {
       const filePath = path.resolve(context.workingDirectory, params.path);
       const content = await fs.readFile(filePath, 'utf-8');
 
+      const offset = typeof params.offset === 'number' ? params.offset : 0;
+      const limit = typeof params.limit === 'number' ? params.limit : undefined;
+
+      let finalContent = content;
+      let totalLines = 0;
+      let linesRead = 0;
+
+      if (offset > 0 || limit !== undefined) {
+        const lines = String(content || '').split('\n');
+        totalLines = lines.length;
+
+        const startIndex = Math.max(0, offset);
+        const endIndex = limit !== undefined ? Math.min(startIndex + limit, lines.length) : lines.length;
+
+        const selectedLines = lines.slice(startIndex, endIndex);
+        linesRead = selectedLines.length;
+        finalContent = selectedLines.join('\n');
+      }
+
       return {
         success: true,
         data: {
-          content,
-          path: filePath
+          content: finalContent,
+          path: filePath,
+          ...(offset > 0 || limit !== undefined ? {
+            totalLines,
+            linesRead,
+            offset,
+            truncated: limit !== undefined && (offset + limit) < totalLines
+          } : {})
         }
       };
     } catch (error) {

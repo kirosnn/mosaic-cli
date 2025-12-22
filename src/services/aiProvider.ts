@@ -4,6 +4,7 @@ import { loadSystemPrompt } from '../config/systemPrompt.js';
 import { AIError, AIErrorType } from './errors.js';
 import { RetryHandler, DEFAULT_RETRY_CONFIG } from './retryHandler.js';
 import { OllamaClient } from './ollamaClient.js';
+import { getModelDataFromFallback } from '../utils/modelsFetcher.js';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -122,20 +123,39 @@ export class AIProvider {
   private systemPrompt: string;
   private retryHandler: RetryHandler;
   private ollamaClient?: OllamaClient;
-  private readonly MAX_TOKENS = 16384;
+  private readonly MAX_TOKENS: number;
   private readonly TOKEN_RATIO = 4;
   private readonly isReasoningModel: boolean;
+  private readonly maxCompletionTokens?: number;
 
   constructor(config: ProviderConfig) {
     this.config = config;
     this.apiKey = getSecret(`${config.type}_api_key`);
     this.systemPrompt = loadSystemPrompt();
+
     this.retryHandler = new RetryHandler({
       ...DEFAULT_RETRY_CONFIG,
       maxRetries: 3,
       timeoutMs: 180000
     });
     this.isReasoningModel = isReasoningModel(config.type, config.model);
+
+    if (config.type === 'mistral') {
+      const modelData = getModelDataFromFallback('mistralai', config.model);
+      const contextLimit = modelData?.limit?.context;
+      const outputLimit = modelData?.limit?.output;
+
+      this.MAX_TOKENS = typeof contextLimit === 'number' && contextLimit > 0
+        ? contextLimit
+        : 16384;
+
+      this.maxCompletionTokens = typeof outputLimit === 'number' && outputLimit > 0
+        ? outputLimit
+        : undefined;
+    } else {
+      this.MAX_TOKENS = 16384;
+      this.maxCompletionTokens = undefined;
+    }
 
     if (config.type === 'ollama') {
       this.ollamaClient = new OllamaClient(config.baseUrl || 'http://localhost:11434');
@@ -533,7 +553,8 @@ export class AIProvider {
         body: JSON.stringify({
           model: this.config.model,
           messages: messages,
-          stream: false
+          stream: false,
+          ...(this.maxCompletionTokens && { max_tokens: this.maxCompletionTokens })
         })
       });
     } catch (error) {

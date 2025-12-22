@@ -21,8 +21,15 @@ export interface ExecutionPlan {
 export class TaskPlanner {
   private aiProvider: AIProvider;
 
-  constructor(aiProvider: AIProvider) {
+  private reportTokenUsage?: (tokens: number, source: string) => void;
+
+  constructor(aiProvider: AIProvider, reportTokenUsage?: (tokens: number, source: string) => void) {
     this.aiProvider = aiProvider;
+    this.reportTokenUsage = reportTokenUsage;
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
   }
 
   async createPlan(
@@ -38,6 +45,11 @@ export class TaskPlanner {
     ];
 
     const response = await this.aiProvider.sendMessage(messages);
+
+    const promptText = messages.map(m => m.content).join('\n');
+    const promptTokens = this.estimateTokens(promptText);
+    const responseTokens = this.estimateTokens(response.content || '');
+    this.reportTokenUsage?.(promptTokens + responseTokens, 'task_planning');
 
     if (response.error) {
       return this.getDefaultPlan(userRequest, intention);
@@ -156,6 +168,11 @@ Respond ONLY with valid JSON.`;
     ];
 
     const response = await this.aiProvider.sendMessage(messages);
+
+    const promptText = messages.map(m => m.content).join('\n');
+    const promptTokens = this.estimateTokens(promptText);
+    const responseTokens = this.estimateTokens(response.content || '');
+    this.reportTokenUsage?.(promptTokens + responseTokens, 'task_planning_refine');
 
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);

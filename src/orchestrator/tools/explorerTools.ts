@@ -439,14 +439,14 @@ function formatFilePreviews(previews: Array<{ path: string; size: number; linesR
 
 export const exploreWorkspaceTool: Tool = {
   name: 'explore_workspace',
-  description: 'Explore and analyze the workspace structure. Provides a comprehensive overview of the project including file structure, project type, languages, dependencies, and configuration. This is the ideal tool to understand a new codebase or workspace.',
+  description: 'Explore and analyze the workspace structure. Provides an overview of the project including file structure, project type, languages, dependencies, and configuration. Use lower values for maxFiles and maxPreviewLines to reduce token usage.',
   parameters: [
     {
       name: 'maxDepth',
       type: 'number',
-      description: 'Maximum depth to explore directories (default: 3)',
+      description: 'Maximum depth to explore directories (default: 2)',
       required: false,
-      default: 3
+      default: 2
     },
     {
       name: 'includeAnalysis',
@@ -465,25 +465,25 @@ export const exploreWorkspaceTool: Tool = {
     {
       name: 'maxFiles',
       type: 'number',
-      description: 'Maximum number of files to preview (default: 8)',
+      description: 'Maximum number of files to preview (default: 4)',
       required: false,
-      default: 8
+      default: 4
     },
     {
       name: 'maxPreviewLines',
       type: 'number',
-      description: 'Maximum lines per file preview (default: 30)',
+      description: 'Maximum lines per file preview (default: 15)',
       required: false,
-      default: 30
+      default: 15
     }
   ],
   execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
     try {
-      const maxDepth = params.maxDepth || 3;
+      const maxDepth = params.maxDepth || 2;
       const includeAnalysis = params.includeAnalysis !== false;
       const includeFilePreviews = params.includeFilePreviews !== false;
-      const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 8;
-      const maxPreviewLines = typeof params.maxPreviewLines === 'number' ? params.maxPreviewLines : 30;
+      const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 4;
+      const maxPreviewLines = typeof params.maxPreviewLines === 'number' ? params.maxPreviewLines : 15;
 
       let output = '';
 

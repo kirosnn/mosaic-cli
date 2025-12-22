@@ -34,8 +34,17 @@ export class Orchestrator {
   ) {
     this.toolRegistry = new ToolRegistry();
     this.aiProvider = new AIProvider(providerConfig);
-    this.intentionDetector = new IntentionDetector(this.aiProvider);
-    this.taskPlanner = new TaskPlanner(this.aiProvider);
+
+    const reportTokenUsage = (tokens: number, source: string) => {
+      this.emit({
+        type: 'token_usage',
+        timestamp: new Date(),
+        data: { source, tokens }
+      });
+    };
+
+    this.intentionDetector = new IntentionDetector(this.aiProvider, reportTokenUsage);
+    this.taskPlanner = new TaskPlanner(this.aiProvider, reportTokenUsage);
 
     this.config = {
       maxIterations: config.maxIterations ?? 10,
@@ -67,6 +76,10 @@ export class Orchestrator {
 
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
   }
 
   on(listener: OrchestratorEventListener): void {
@@ -291,6 +304,14 @@ export class Orchestrator {
         };
 
         this.state.context.conversationHistory.push(toolResultMsg);
+
+        const enrichedContent = this.enrichToolResultMessage(toolResultMsg);
+        const toolTokens = this.estimateTokens(enrichedContent);
+        this.emit({
+          type: 'token_usage',
+          timestamp: new Date(),
+          data: { source: 'tool_result', toolName: toolCall.toolName, tokens: toolTokens }
+        });
 
         steps.push({
           action: 'tool_call',

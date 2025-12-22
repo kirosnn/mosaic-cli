@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig, getModelHistory, addToModelHistory } from '../config/index.js';
+import * as path from 'path';
 import { shortcuts, commands } from '../config/shortcuts.js';
 import { getProviderTypes, PROVIDERS, getProviderOption } from '../config/providers.js';
 import { Orchestrator, universalAgent, allTools } from '../orchestrator/index.js';
@@ -319,6 +320,15 @@ const ChatInterface: React.FC = () => {
         isStreaming.current = false;
       } else if (event.type === 'final_response') {
         isStreaming.current = false;
+      } else if (event.type === 'token_usage') {
+        const tokens = typeof event.data?.tokens === 'number' ? event.data.tokens : 0;
+        if (tokens > 0) {
+          setTokenCount(prev => {
+            const newCount = prev + tokens;
+            currentTokenCount.current = newCount;
+            return newCount;
+          });
+        }
       }
     });
 
@@ -370,9 +380,32 @@ const ChatInterface: React.FC = () => {
   const executeInitCommand = async () => {
     if (isLoading || !orchestrator) return;
 
+    setTokenCount(0);
+    currentTokenCount.current = 0;
+
     const mosaicPath = getMosaicFilePath();
 
     const fs = await import('fs/promises');
+    const workspaceDir = process.cwd();
+    const workspaceMosaicDir = path.join(workspaceDir, '.mosaic');
+    const workspaceConfigPath = path.join(workspaceDir, 'mosaic.jsonc');
+
+    try {
+      await fs.mkdir(workspaceMosaicDir, { recursive: true });
+      try {
+        await fs.access(workspaceConfigPath);
+      } catch {
+        const defaultConfig = [
+          '{',
+          `  "workspaceRoot": ${JSON.stringify(workspaceDir)}`,
+          '}',
+          ''
+        ].join('\n');
+        await fs.writeFile(workspaceConfigPath, defaultConfig, 'utf-8');
+      }
+    } catch {
+    }
+
     try {
       await fs.unlink(mosaicPath);
     } catch {
