@@ -84,10 +84,9 @@ const ToolApprovalPromptNew: React.FC<ToolApprovalPromptNewProps> = ({
   });
 
   const renderDiffLine = (line: DiffLine, index: number) => {
-    const lineNumStr = line.lineNumber !== null ? String(line.lineNumber) : '';
-    const prefix = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ';
-    const lineContent = `${lineNumStr} ${prefix}${line.content}`;
-    const contentWidth = terminalWidth;
+    const lineNumStr = line.lineNumber !== null ? String(line.lineNumber).padStart(4, ' ') : '    ';
+    const contentWidth = terminalWidth - 2;
+    const lineContent = `${lineNumStr} ${line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '} ${line.content}`;
     const paddedLine = lineContent.padEnd(contentWidth, ' ');
 
     if (line.type === 'empty') {
@@ -121,33 +120,50 @@ const ToolApprovalPromptNew: React.FC<ToolApprovalPromptNewProps> = ({
     );
   };
 
+  const horizontalLine = '─'.repeat(terminalWidth);
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginY={1}>
       <Box>
-        <Text color={theme.colors.text}>{displayName} {filePath}</Text>
+        <Text color={theme.colors.secondary}>{horizontalLine}</Text>
       </Box>
-      <Box flexDirection="column">
+
+      <Box marginTop={1}>
+        <Text color={theme.colors.text}>  {displayName} {filePath}</Text>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text color={theme.colors.secondary}>{horizontalLine}</Text>
+      </Box>
+
+      <Box flexDirection="column" marginY={1} paddingLeft={1}>
         {diffLines.slice(0, 50).map((line, index) => renderDiffLine(line, index))}
         {diffLines.length > 50 && (
-          <Box>
-            <Text color={theme.colors.secondary}>... ({diffLines.length - 50} more lines)</Text>
+          <Box marginTop={1}>
+            <Text color={theme.colors.secondary}>  ... ({diffLines.length - 50} more lines)</Text>
           </Box>
         )}
       </Box>
-      <Box flexDirection="column">
-        <Text color={theme.colors.text}>Do you want to make this edit to {filePath}?</Text>
-        <Box flexDirection="column">
+
+      <Box>
+        <Text color={theme.colors.secondary}>{horizontalLine}</Text>
+      </Box>
+
+      <Box marginTop={1} flexDirection="column" paddingLeft={1}>
+        <Text color={theme.colors.text}>  Do you want to make this edit to {filePath}?</Text>
+        <Box marginTop={1} flexDirection="column">
           {options.map((option, index) => (
-            <Box key={index}>
+            <Box key={index} marginBottom={index < options.length - 1 ? 0 : 1}>
               <Text color={selectedOption === index ? theme.colors.accent : theme.colors.text}>
-                {selectedOption === index ? '> ' : '  '}{index + 1}. {option}
+                {selectedOption === index ? '  ❯ ' : '    '}{index + 1}. {option}
               </Text>
             </Box>
           ))}
         </Box>
+
         {isTyping && (
-          <Box>
-            <Text color={theme.colors.text}>{'> '}</Text>
+          <Box marginTop={1}>
+            <Text color={theme.colors.text}>  {'> '}</Text>
             <TextInput
               value={customInput}
               onChange={setCustomInput}
@@ -155,6 +171,14 @@ const ToolApprovalPromptNew: React.FC<ToolApprovalPromptNewProps> = ({
             />
           </Box>
         )}
+      </Box>
+
+      <Box marginTop={1}>
+        <Text color={theme.colors.secondary}>{horizontalLine}</Text>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text color={theme.colors.secondary}>  Esc to cancel</Text>
       </Box>
     </Box>
   );
