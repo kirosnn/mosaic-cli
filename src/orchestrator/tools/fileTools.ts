@@ -133,7 +133,7 @@ export const writeFileTool: Tool = {
 
 export const updateFileTool: Tool = {
   name: 'update_file',
-  description: 'Update specific lines in an existing file. Can modify multiple line ranges at once.',
+  description: 'Update specific lines in an existing file. Can modify multiple line ranges at once. IMPORTANT: Line numbers are 1-indexed (first line is 1, not 0). To replace the entire file content, use startLine=1 and endLine=<total lines>.',
   parameters: [
     {
       name: 'path',
@@ -144,7 +144,7 @@ export const updateFileTool: Tool = {
     {
       name: 'updates',
       type: 'array',
-      description: 'Array of updates to apply. Each update contains startLine, endLine, and newContent',
+      description: 'Array of updates to apply. Each update contains startLine (1-indexed), endLine (1-indexed), and newContent. Example: [{startLine: 1, endLine: 1, newContent: "new text"}] replaces the first line.',
       required: true
     }
   ],

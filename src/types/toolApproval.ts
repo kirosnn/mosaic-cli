@@ -1,9 +1,18 @@
+import { DiffLine } from '../utils/diffFormatter.js';
+
 export interface ToolApprovalRequest {
   toolName: string;
   parameters: Record<string, any>;
   preview: string;
+  previewData?: {
+    filePath: string;
+    diffLines: DiffLine[];
+    command?: string;
+  };
   onApprove: () => void;
   onReject: () => void;
+  onApproveAll?: () => void;
+  onModify?: (instructions: string) => void;
 }
 
 export const TOOLS_REQUIRING_APPROVAL = [

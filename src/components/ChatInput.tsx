@@ -55,9 +55,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
       if (key.upArrow) {
         isHistoryNavigationRef.current = true;
         onHistoryNavigation('up');
+        return;
       } else if (key.downArrow) {
         isHistoryNavigationRef.current = true;
         onHistoryNavigation('down');
+        return;
       }
     }
   });

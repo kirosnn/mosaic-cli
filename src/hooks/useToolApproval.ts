@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useInput } from 'ink';
 import { ToolApprovalRequest, needsApproval } from '../types/toolApproval.js';
-import { generateToolPreview } from '../utils/diffFormatter.js';
+import { generateToolPreview, generateToolPreviewData } from '../utils/diffFormatter.js';
 import { formatToolName, formatToolResult } from '../utils/toolFormatters.js';
 import { ToolExecution } from '../types/toolExecution.js';
 
@@ -12,18 +12,7 @@ interface UseToolApprovalOptions {
 
 export function useToolApproval(options: UseToolApprovalOptions = {}) {
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null);
-
-  useInput((inputChar, key) => {
-    if (pendingApproval) {
-      if (inputChar === 'y' || inputChar === 'Y') {
-        pendingApproval.onApprove();
-        setPendingApproval(null);
-      } else if (inputChar === 'n' || inputChar === 'N' || key.escape) {
-        pendingApproval.onReject();
-        setPendingApproval(null);
-      }
-    }
-  });
+  const approveAllSession = useRef<boolean>(false);
 
   const wrapToolExecution = useCallback((
     originalExecute: (toolName: string, parameters: Record<string, any>, context: any, timeout?: number) => Promise<any>,
@@ -42,21 +31,52 @@ export function useToolApproval(options: UseToolApprovalOptions = {}) {
       executedTools.push(newTool);
       options.onToolStart?.(newTool);
 
-      if (needsApproval(toolName)) {
+      if (needsApproval(toolName) && !approveAllSession.current) {
         const preview = await generateToolPreview(toolName, parameters);
+        const previewData = await generateToolPreviewData(toolName, parameters);
 
-        const approved = await new Promise<boolean>((resolve) => {
+        const approval = await new Promise<{ approved: boolean; approveAll: boolean; modify?: string }>((resolve) => {
           const approvalRequest: ToolApprovalRequest = {
             toolName,
             parameters,
             preview,
-            onApprove: () => resolve(true),
-            onReject: () => resolve(false)
+            previewData,
+            onApprove: () => resolve({ approved: true, approveAll: false }),
+            onReject: () => resolve({ approved: false, approveAll: false }),
+            onApproveAll: () => {
+              approveAllSession.current = true;
+              resolve({ approved: true, approveAll: true });
+            },
+            onModify: (instructions: string) => {
+              resolve({ approved: false, approveAll: false, modify: instructions });
+            }
           };
           setPendingApproval(approvalRequest);
         });
 
-        if (!approved) {
+        setPendingApproval(null);
+
+        if (approval.modify) {
+          const toolIndex = executedTools.findIndex(
+            tool => tool.name === toolName && tool.status === 'running'
+          );
+
+          if (toolIndex !== -1) {
+            executedTools[toolIndex] = {
+              ...executedTools[toolIndex],
+              status: 'error',
+              result: `User requested modification: ${approval.modify}`
+            };
+            options.onToolComplete?.(executedTools[toolIndex]);
+          }
+
+          return {
+            success: false,
+            error: `User requested modification: ${approval.modify}`
+          };
+        }
+
+        if (!approval.approved) {
           const toolIndex = executedTools.findIndex(
             tool => tool.name === toolName && tool.status === 'running'
           );

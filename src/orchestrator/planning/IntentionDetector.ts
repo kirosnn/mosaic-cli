@@ -41,11 +41,12 @@ Respond with JSON only:
 
 ## Guidelines
 
-1. For workspace/code/file operations: include explore_workspace first, then search_code
-2. Select only tools that add value to completing the task
-3. Provide realistic confidence based on request clarity
-4. Keep suggestedApproach concise and actionable
-5. Respond in the same language as the user's request
+1. For targeted operations: prefer search_code + read_file over explore_workspace
+2. Only suggest explore_workspace when user explicitly asks for workspace overview/structure
+3. Select only tools that add value to completing the task
+4. Provide realistic confidence based on request clarity
+5. Keep suggestedApproach concise and actionable
+6. Respond in the same language as the user's request
 
 ## Available Tools
 
@@ -54,10 +55,16 @@ ${availableTools.join(', ')}
 ## Examples
 
 Request: "find authentication code"
-Response: {"primaryIntent": "Locate authentication implementation", "confidence": 0.9, "requiredTools": ["search_code"], "suggestedApproach": "Search for auth patterns and analyze found files", "complexity": "simple", "estimatedSteps": 2}
+Response: {"primaryIntent": "Locate authentication implementation", "confidence": 0.9, "requiredTools": ["search_code", "read_file"], "suggestedApproach": "Search for auth patterns and analyze found files", "complexity": "simple", "estimatedSteps": 2}
 
 Request: "fix login bug"
-Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0.8, "requiredTools": ["search_code", "read_file", "update_file"], "suggestedApproach": "Search login code, analyze implementation, identify and fix issues", "complexity": "moderate", "estimatedSteps": 4}`;
+Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0.8, "requiredTools": ["search_code", "read_file", "update_file"], "suggestedApproach": "Search login code, read file, identify issues, apply fix with update_file", "complexity": "moderate", "estimatedSteps": 4}
+
+Request: "modify config.json to add new setting"
+Response: {"primaryIntent": "Update configuration file", "confidence": 0.9, "requiredTools": ["read_file", "update_file"], "suggestedApproach": "Read current config, apply modifications with update_file", "complexity": "simple", "estimatedSteps": 2}
+
+Request: "analyze project structure"
+Response: {"primaryIntent": "Understand workspace organization", "confidence": 0.9, "requiredTools": ["explore_workspace"], "suggestedApproach": "Use explore_workspace with default parameters for overview", "complexity": "simple", "estimatedSteps": 1}`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -111,19 +118,14 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       lowerRequest.includes('update');
 
     const needsWorkspaceUnderstanding =
-      lowerRequest.includes('workspace') ||
-      lowerRequest.includes('project') ||
-      lowerRequest.includes('codebase') ||
-      lowerRequest.includes('repository') ||
-      lowerRequest.includes('repo') ||
-      lowerRequest.includes('analyse') ||
-      lowerRequest.includes('analyze') ||
-      lowerRequest.includes('understand') ||
-      lowerRequest.includes('explore') ||
-      lowerRequest.includes('structure') ||
-      lowerRequest.includes('overview');
+      (lowerRequest.includes('workspace') && (lowerRequest.includes('analyze') || lowerRequest.includes('analyse') || lowerRequest.includes('overview') || lowerRequest.includes('structure'))) ||
+      (lowerRequest.includes('project') && (lowerRequest.includes('analyze') || lowerRequest.includes('analyse') || lowerRequest.includes('overview') || lowerRequest.includes('structure'))) ||
+      lowerRequest.includes('project structure') ||
+      lowerRequest.includes('workspace structure') ||
+      lowerRequest.includes('codebase overview') ||
+      lowerRequest.includes('repository overview');
 
-    if ((needsWorkspaceUnderstanding || needsCodeContext) && availableTools.includes('explore_workspace')) {
+    if (needsWorkspaceUnderstanding && availableTools.includes('explore_workspace')) {
       requiredTools.push('explore_workspace');
     }
 
@@ -131,11 +133,28 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       requiredTools.push('search_code');
     }
 
-    if (lowerRequest.includes('file') || lowerRequest.includes('read') || lowerRequest.includes('write')) {
+    const needsFileModification =
+      lowerRequest.includes('modify') ||
+      lowerRequest.includes('update') ||
+      lowerRequest.includes('change') ||
+      lowerRequest.includes('fix') ||
+      lowerRequest.includes('translate') ||
+      lowerRequest.includes('refactor') ||
+      lowerRequest.includes('edit');
+
+    if (lowerRequest.includes('file') || lowerRequest.includes('read') || lowerRequest.includes('write') || needsFileModification) {
       if (!requiredTools.includes('search_code') && availableTools.includes('search_code')) {
         requiredTools.push('search_code');
       }
-      requiredTools.push('read_file', 'write_file', 'file_exists');
+      requiredTools.push('read_file');
+
+      if (needsFileModification) {
+        requiredTools.push('update_file');
+      } else {
+        requiredTools.push('write_file');
+      }
+
+      requiredTools.push('file_exists');
     }
     if (lowerRequest.includes('execute') || lowerRequest.includes('run') || lowerRequest.includes('command')) {
       requiredTools.push('execute_shell');
@@ -150,11 +169,13 @@ Response: {"primaryIntent": "Debug and fix login functionality", "confidence": 0
       primaryIntent: 'Process user request',
       confidence: 0.6,
       requiredTools: requiredTools.length > 0 ? requiredTools : availableTools.slice(0, 3),
-      suggestedApproach: needsWorkspaceUnderstanding || needsCodeContext
-        ? 'Explore workspace to understand structure, then search relevant code and act'
+      suggestedApproach: needsWorkspaceUnderstanding
+        ? 'Use explore_workspace for overview, then proceed with task'
+        : needsCodeContext
+        ? 'Search relevant code, read files, and act'
         : 'Analyze request and use appropriate tools',
       complexity: 'moderate',
-      estimatedSteps: needsWorkspaceUnderstanding || needsCodeContext ? 3 : 2
+      estimatedSteps: needsWorkspaceUnderstanding ? 2 : needsCodeContext ? 3 : 2
     };
   }
 }

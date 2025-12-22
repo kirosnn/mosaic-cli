@@ -10,6 +10,7 @@ interface ChatHeaderProps {
   provider?: ProviderConfig;
   currentDir: string;
   theme: Theme;
+  verboseMode?: boolean;
 }
 
 interface FormattingConfig {
@@ -63,7 +64,7 @@ const formatModelName = (model?: string): string => {
     .join(' ');
 };
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ version, provider, currentDir, theme }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ version, provider, currentDir, theme, verboseMode }) => {
   const formattedProvider = useMemo(() => formatProviderName(provider?.type), [provider?.type]);
   const formattedModel = useMemo(() => formatModelName(provider?.model), [provider?.model]);
 
@@ -85,6 +86,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ version, provider, currentDir, 
         <Box>
           <Text bold color={theme.colors.primary}>Mosaic CLI</Text>
           <Text bold color={theme.colors.secondary}> · v{version}</Text>
+          {verboseMode && <Text bold color={theme.colors.accent}> · VERBOSE</Text>}
         </Box>
         <Box>
           <Text color={theme.colors.secondary}>{formattedModel}</Text>

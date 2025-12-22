@@ -23,4 +23,5 @@ export const commands: Command[] = [
   { name: '/model', description: 'Change model', action: 'model' },
   { name: '/verbose', description: 'Toggle verbose mode', action: 'verbose' },
   { name: '/init', description: 'Create MOSAIC.md for workspace', action: 'init' },
+  { name: '/rewind', description: 'Rewind to previous message', action: 'rewind' },
 ];

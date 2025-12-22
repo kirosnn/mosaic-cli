@@ -8,6 +8,7 @@ interface UseKeyboardShortcutsProps {
   showThemeSelector?: boolean;
   showProviderSelector?: boolean;
   showModelSelector?: boolean;
+  showRewindSelector?: boolean;
   selectedIndex: number;
   shortcuts: any[];
   commands: any[];
@@ -16,6 +17,7 @@ interface UseKeyboardShortcutsProps {
   themeNames?: string[];
   providerNames?: any[];
   availableModels?: Array<{ key: string; description: string; isHistory?: boolean; isSeparator?: boolean; isCustom?: boolean }>;
+  userMessages?: any[];
   onClearMessages: () => void;
   onClearInput: () => void;
   onShowShortcuts: (show: boolean) => void;
@@ -23,6 +25,7 @@ interface UseKeyboardShortcutsProps {
   onShowThemeSelector?: (show: boolean) => void;
   onShowProviderSelector?: (show: boolean) => void;
   onShowModelSelector?: (show: boolean) => void;
+  onShowRewindSelector?: (show: boolean) => void;
   onSelectIndex: (index: number) => void;
   onSelectItem: (item: string) => void;
   onShowCtrlCMessage: (show: boolean) => void;
@@ -31,6 +34,7 @@ interface UseKeyboardShortcutsProps {
   onSelectTheme?: (themeName: string) => void;
   onSelectProvider?: (providerType: string) => void;
   onSelectModel?: (model: string) => void;
+  onSelectRewind?: (messageIndex: number) => void;
 }
 
 export const useKeyboardShortcuts = ({
@@ -40,6 +44,7 @@ export const useKeyboardShortcuts = ({
   showThemeSelector = false,
   showProviderSelector = false,
   showModelSelector = false,
+  showRewindSelector = false,
   selectedIndex,
   shortcuts,
   commands,
@@ -48,6 +53,7 @@ export const useKeyboardShortcuts = ({
   themeNames = [],
   providerNames = [],
   availableModels = [],
+  userMessages = [],
   onClearMessages,
   onClearInput,
   onShowShortcuts,
@@ -55,6 +61,7 @@ export const useKeyboardShortcuts = ({
   onShowThemeSelector,
   onShowProviderSelector,
   onShowModelSelector,
+  onShowRewindSelector,
   onSelectIndex,
   onSelectItem,
   onShowCtrlCMessage,
@@ -62,7 +69,8 @@ export const useKeyboardShortcuts = ({
   onExecuteShortcut,
   onSelectTheme,
   onSelectProvider,
-  onSelectModel
+  onSelectModel,
+  onSelectRewind
 }: UseKeyboardShortcutsProps) => {
   const { exit } = useApp();
   const exitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,7 +99,7 @@ export const useKeyboardShortcuts = ({
       return;
     }
 
-    if (showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector) {
+    if (showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showRewindSelector) {
       let items: any[] = [];
 
       if (showShortcuts) {
@@ -104,6 +112,16 @@ export const useKeyboardShortcuts = ({
         items = providerNames.map(p => ({ key: p.type, description: p.name }));
       } else if (showModelSelector) {
         items = availableModels;
+      } else if (showRewindSelector) {
+        items = userMessages.filter(m => m.msg.role === 'user');
+      }
+
+      if (key.tab && showCommands && items.length > 0) {
+        const firstCommand = items[0];
+        if (firstCommand) {
+          onSelectItem(firstCommand.name);
+        }
+        return;
       }
 
       if (key.downArrow) {
@@ -179,6 +197,16 @@ export const useKeyboardShortcuts = ({
           }
           onSelectIndex(0);
           onClearInput();
+        } else if (showRewindSelector && onSelectRewind) {
+          const selectedItem = items[selectedIndex];
+          if (selectedItem && selectedItem.originalIndex !== undefined) {
+            onSelectRewind(selectedItem.originalIndex);
+          }
+          if (onShowRewindSelector) {
+            onShowRewindSelector(false);
+          }
+          onSelectIndex(0);
+          onClearInput();
         }
       } else if (key.escape) {
         onShowShortcuts(false);
@@ -191,6 +219,9 @@ export const useKeyboardShortcuts = ({
         }
         if (onShowModelSelector) {
           onShowModelSelector(false);
+        }
+        if (onShowRewindSelector) {
+          onShowRewindSelector(false);
         }
         onSelectIndex(0);
       }

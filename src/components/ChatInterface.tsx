@@ -14,6 +14,7 @@ import DropdownMenu from './DropdownMenu.js';
 import GlowingText from './GlowingText.js';
 import ToolExecutionList from './ToolExecutionList.js';
 import ToolApprovalPrompt from './ToolApprovalPrompt.js';
+import ToolApprovalPromptNew from './ToolApprovalPromptNew.js';
 import LoadingStatus from './LoadingStatus.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useToolApproval } from '../hooks/useToolApproval.js';
@@ -21,10 +22,18 @@ import { historyService } from '../services/historyService.js';
 import { VerboseLogger } from '../utils/VerboseLogger.js';
 import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalUtils.js';
 import { MOSAIC_INIT_PROMPT, getMosaicFilePath } from '../utils/mosaicContext.js';
+import { rewindService, FileSnapshot } from '../services/rewindService.js';
+import RewindSelector from './RewindSelector.js';
+import * as fs from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
 
 const version = getPackageVersion();
 
-const ChatInterface: React.FC = () => {
+interface ChatInterfaceProps {
+  initialVerboseMode?: boolean;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = false }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<MessageWithTools[]>([]);
   const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -34,6 +43,7 @@ const ChatInterface: React.FC = () => {
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showRewindSelector, setShowRewindSelector] = useState(false);
   const [customModelInput, setCustomModelInput] = useState('');
   const [isAddingCustomModel, setIsAddingCustomModel] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -45,10 +55,10 @@ const ChatInterface: React.FC = () => {
     return config.provider;
   });
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [verboseMode, setVerboseMode] = useState<boolean>(false);
+  const [verboseMode, setVerboseMode] = useState<boolean>(initialVerboseMode);
   const [tokenCount, setTokenCount] = useState<number>(0);
   const executingCommand = useRef(false);
-  const verboseLogger = useRef(new VerboseLogger(false));
+  const verboseLogger = useRef(new VerboseLogger(initialVerboseMode));
   const streamingIndex = useRef<number | null>(null);
   const isStreaming = useRef<boolean>(false);
   const iterationCount = useRef<number>(0);
@@ -135,6 +145,13 @@ const ChatInterface: React.FC = () => {
     const loadedConfig = loadConfig();
     setCurrentThemeName(loadedConfig.theme || 'default');
   }, []);
+
+  useEffect(() => {
+    if (initialVerboseMode) {
+      verboseLogger.current.setEnabled(true);
+      setVerboseMode(true);
+    }
+  }, [initialVerboseMode]);
 
   const orchestrator = useMemo(() => {
     if (!currentProvider) return null;
@@ -440,13 +457,38 @@ const ChatInterface: React.FC = () => {
       const toolRegistry = orchestrator.getToolRegistry();
       const originalExecute = toolRegistry.execute.bind(toolRegistry);
       const executedToolsForApproval: ToolExecution[] = [];
+      const filesModified: FileSnapshot[] = [];
 
-      toolRegistry.execute = wrapToolExecution(originalExecute, executedToolsForApproval);
+      const trackingWrapper = async (toolName: string, params: Record<string, any>, context: any) => {
+        if (toolName === 'write_file' || toolName === 'update_file' || toolName === 'delete_file') {
+          const filePath = path.resolve(context.workingDirectory, params.path);
+          try {
+            const existsBefore = existsSync(filePath);
+            const contentBefore = existsBefore ? readFileSync(filePath, 'utf-8') : '';
+
+            filesModified.push({
+              path: filePath,
+              content: contentBefore,
+              exists: existsBefore
+            });
+          } catch (error) {
+          }
+        }
+
+        return originalExecute(toolName, params, context);
+      };
+
+      toolRegistry.execute = wrapToolExecution(trackingWrapper, executedToolsForApproval);
 
       await orchestrator.executeTaskWithPlanning(MOSAIC_INIT_PROMPT);
 
       toolRegistry.execute = originalExecute;
       setCurrentToolExecutions([]);
+
+      if (filesModified.length > 0) {
+        const currentMessageIndex = messages.length - 1;
+        rewindService.createSnapshot(currentMessageIndex, '/init', filesModified);
+      }
 
       let finalMessage = '';
       try {
@@ -552,6 +594,9 @@ const ChatInterface: React.FC = () => {
       setTimeout(() => {
         executeInitCommand();
       }, 100);
+    } else if (action === 'rewind') {
+      setShowRewindSelector(true);
+      setSelectedIndex(0);
     }
 
     setTimeout(() => {
@@ -643,6 +688,70 @@ const ChatInterface: React.FC = () => {
     setSelectedIndex(0);
   };
 
+  const handleRewindSelection = async (messageIndex: number) => {
+    setShowRewindSelector(false);
+    setSelectedIndex(0);
+    setIsLoading(true);
+
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: 'Rewinding conversation and restoring files...'
+    };
+    setMessages(prev => [...prev, statusMessage]);
+
+    try {
+      const { filesRestored, errors } = await rewindService.restoreToSnapshot(messageIndex);
+
+      setMessages(prev => prev.slice(0, messageIndex + 1));
+
+      if (orchestrator) {
+        orchestrator.resetContext();
+      }
+
+      let resultContent = `Rewind complete.\n\n`;
+      if (filesRestored.length > 0) {
+        resultContent += `Files restored: ${filesRestored.length}\n`;
+        filesRestored.forEach(file => {
+          resultContent += `  - ${file}\n`;
+        });
+      } else {
+        resultContent += 'No files needed restoration.\n';
+      }
+
+      if (errors.length > 0) {
+        resultContent += `\nErrors encountered:\n`;
+        errors.forEach(error => {
+          resultContent += `  - ${error}\n`;
+        });
+      }
+
+      const resultMessage: MessageWithTools = {
+        role: 'assistant',
+        content: resultContent
+      };
+
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = resultMessage;
+        return updated;
+      });
+
+    } catch (error) {
+      const errorMessage: MessageWithTools = {
+        role: 'assistant',
+        content: `Error during rewind: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = errorMessage;
+        return updated;
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCustomModelSubmit = () => {
     const currentConfig = loadConfig();
     if (!currentConfig.provider || !customModelInput.trim()) {
@@ -703,6 +812,12 @@ const ChatInterface: React.FC = () => {
     }
   });
 
+  const userMessages = useMemo(() => {
+    return messages
+      .map((msg, index) => ({ msg, originalIndex: index }))
+      .filter(item => item.msg.role === 'user');
+  }, [messages]);
+
   const { resetExitState } = useKeyboardShortcuts({
     input,
     showShortcuts,
@@ -710,6 +825,7 @@ const ChatInterface: React.FC = () => {
     showThemeSelector,
     showProviderSelector,
     showModelSelector,
+    showRewindSelector,
     selectedIndex,
     shortcuts,
     commands,
@@ -718,12 +834,14 @@ const ChatInterface: React.FC = () => {
     themeNames,
     providerNames,
     availableModels,
+    userMessages,
     onClearMessages: () => {
       setMessages([]);
       setTokenCount(0);
       if (orchestrator) {
         orchestrator.resetContext();
       }
+      rewindService.clearSnapshots();
     },
     onClearInput: () => setInput(''),
     onShowShortcuts: setShowShortcuts,
@@ -731,6 +849,7 @@ const ChatInterface: React.FC = () => {
     onShowThemeSelector: setShowThemeSelector,
     onShowProviderSelector: setShowProviderSelector,
     onShowModelSelector: setShowModelSelector,
+    onShowRewindSelector: setShowRewindSelector,
     onSelectIndex: setSelectedIndex,
     onSelectItem: setInput,
     onShowCtrlCMessage: setShowCtrlCMessage,
@@ -738,7 +857,8 @@ const ChatInterface: React.FC = () => {
     onExecuteShortcut: handleShortcutExecution,
     onSelectTheme: handleThemeSelection,
     onSelectProvider: handleProviderSelection,
-    onSelectModel: handleModelSelection
+    onSelectModel: handleModelSelection,
+    onSelectRewind: handleRewindSelection
   });
 
   const handleSubmit = async (value: string) => {
@@ -815,14 +935,39 @@ const ChatInterface: React.FC = () => {
         const toolRegistry = orchestrator.getToolRegistry();
         const originalExecute = toolRegistry.execute.bind(toolRegistry);
         const executedToolsForApproval: ToolExecution[] = [];
+        const filesModified: FileSnapshot[] = [];
 
-        toolRegistry.execute = wrapToolExecution(originalExecute, executedToolsForApproval);
+        const trackingWrapper = async (toolName: string, params: Record<string, any>, context: any) => {
+          if (toolName === 'write_file' || toolName === 'update_file' || toolName === 'delete_file') {
+            const filePath = path.resolve(context.workingDirectory, params.path);
+            try {
+              const existsBefore = existsSync(filePath);
+              const contentBefore = existsBefore ? readFileSync(filePath, 'utf-8') : '';
+
+              filesModified.push({
+                path: filePath,
+                content: contentBefore,
+                exists: existsBefore
+              });
+            } catch (error) {
+            }
+          }
+
+          return originalExecute(toolName, params, context);
+        };
+
+        toolRegistry.execute = wrapToolExecution(trackingWrapper, executedToolsForApproval);
 
         const result = await orchestrator.executeTaskWithPlanning(value.trim());
 
         toolRegistry.execute = originalExecute;
 
         setCurrentToolExecutions([]);
+
+        if (filesModified.length > 0) {
+          const currentMessageIndex = messages.length;
+          rewindService.createSnapshot(currentMessageIndex, trimmedValue, filesModified);
+        }
 
         const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
 
@@ -948,6 +1093,7 @@ const ChatInterface: React.FC = () => {
         version={version}
         provider={currentProvider}
         currentDir={currentDir}
+        verboseMode={verboseMode}
         theme={theme}
       />
 
@@ -959,7 +1105,21 @@ const ChatInterface: React.FC = () => {
           streamingMessageIndex={streamingIndex.current ?? -1}
         />
 
-        {pendingApproval && (
+        {pendingApproval && pendingApproval.previewData && (
+          <ToolApprovalPromptNew
+            toolName={pendingApproval.toolName}
+            filePath={pendingApproval.previewData.filePath}
+            diffLines={pendingApproval.previewData.diffLines}
+            theme={theme}
+            terminalWidth={terminalWidth}
+            onApprove={pendingApproval.onApprove}
+            onReject={pendingApproval.onReject}
+            onApproveAll={pendingApproval.onApproveAll || (() => {})}
+            onModify={pendingApproval.onModify || (() => {})}
+          />
+        )}
+
+        {pendingApproval && !pendingApproval.previewData && (
           <ToolApprovalPrompt
             toolName={pendingApproval.toolName}
             preview={pendingApproval.preview}
@@ -978,7 +1138,7 @@ const ChatInterface: React.FC = () => {
           terminalWidth={terminalWidth}
           helpText={helpText}
           theme={theme}
-          isMenuOpen={showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector}
+          isMenuOpen={showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showRewindSelector}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
           onHistoryNavigation={handleHistoryNavigation}
@@ -1043,6 +1203,14 @@ const ChatInterface: React.FC = () => {
           selectedIndex={selectedIndex}
           theme={theme}
           title="Select Model"
+        />
+      )}
+
+      {showRewindSelector && (
+        <RewindSelector
+          messages={messages}
+          selectedIndex={selectedIndex}
+          theme={theme}
         />
       )}
     </Box>

@@ -3,7 +3,14 @@ import fs from 'fs';
 export interface DiffLine {
   lineNumber: number | null;
   content: string;
-  type: 'add' | 'remove' | 'context';
+  type: 'add' | 'remove' | 'context' | 'empty';
+}
+
+export interface ToolPreviewData {
+  toolName: string;
+  filePath: string;
+  diffLines: DiffLine[];
+  command?: string;
 }
 
 export const generateWritePreview = (path: string, content: string): string => {
@@ -98,6 +105,224 @@ export const generateCreateDirectoryPreview = (path: string): string => {
 
 export const generateExecuteShellPreview = (command: string): string => {
   return `Executing shell command:\n\n  $ ${command}\n\nThis command will be executed in your system shell.`;
+};
+
+export const generateWriteDiffLines = (content: string): DiffLine[] => {
+  const safeContent = content || '';
+  const lines = safeContent.split('\n');
+  const diffLines: DiffLine[] = [];
+
+  lines.forEach((line, index) => {
+    diffLines.push({
+      lineNumber: index + 1,
+      content: line,
+      type: 'add'
+    });
+  });
+
+  if (lines.length > 0 && lines[lines.length - 1] !== '') {
+    diffLines.push({
+      lineNumber: null,
+      content: 'No newline at end of file',
+      type: 'empty'
+    });
+  }
+
+  return diffLines;
+};
+
+export const generateUpdateDiffLines = (oldContent: string, newContent: string): DiffLine[] => {
+  const safeOldContent = oldContent || '';
+  const safeNewContent = newContent || '';
+  const oldLines = safeOldContent.split('\n');
+  const newLines = safeNewContent.split('\n');
+  const diffLines: DiffLine[] = [];
+
+  const maxLines = Math.max(oldLines.length, newLines.length);
+
+  for (let i = 0; i < maxLines; i++) {
+    const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+    const newLine = i < newLines.length ? newLines[i] : undefined;
+
+    if (oldLine !== undefined && newLine !== undefined) {
+      if (oldLine === newLine) {
+        diffLines.push({
+          lineNumber: i + 1,
+          content: oldLine,
+          type: 'context'
+        });
+      } else {
+        diffLines.push({
+          lineNumber: i + 1,
+          content: oldLine,
+          type: 'remove'
+        });
+        diffLines.push({
+          lineNumber: i + 1,
+          content: newLine,
+          type: 'add'
+        });
+      }
+    } else if (oldLine !== undefined) {
+      diffLines.push({
+        lineNumber: i + 1,
+        content: oldLine,
+        type: 'remove'
+      });
+    } else if (newLine !== undefined) {
+      diffLines.push({
+        lineNumber: i + 1,
+        content: newLine,
+        type: 'add'
+      });
+    }
+  }
+
+  const oldEndsWithNewline = safeOldContent.endsWith('\n') || safeOldContent === '';
+  const newEndsWithNewline = safeNewContent.endsWith('\n') || safeNewContent === '';
+
+  if (!oldEndsWithNewline && oldLines.length > 0) {
+    diffLines.push({
+      lineNumber: null,
+      content: 'No newline at end of file',
+      type: 'empty'
+    });
+  }
+
+  if (!newEndsWithNewline && newLines.length > 0 && newEndsWithNewline !== oldEndsWithNewline) {
+    diffLines.push({
+      lineNumber: null,
+      content: 'No newline at end of file',
+      type: 'empty'
+    });
+  }
+
+  return diffLines;
+};
+
+export const generateDeleteDiffLines = (path: string): DiffLine[] => {
+  try {
+    const stats = fs.statSync(path);
+    if (stats.isDirectory()) {
+      return [{
+        lineNumber: null,
+        content: 'This will remove the entire directory and all its contents.',
+        type: 'empty'
+      }];
+    } else {
+      const content = fs.readFileSync(path, 'utf-8');
+      const safeContent = content || '';
+      const lines = safeContent.split('\n');
+      const diffLines: DiffLine[] = [];
+
+      lines.forEach((line, index) => {
+        diffLines.push({
+          lineNumber: index + 1,
+          content: line,
+          type: 'remove'
+        });
+      });
+
+      return diffLines;
+    }
+  } catch (error) {
+    return [{
+      lineNumber: null,
+      content: 'File does not exist or cannot be read.',
+      type: 'empty'
+    }];
+  }
+};
+
+export const generateExecuteShellDiffLines = (command: string): DiffLine[] => {
+  return [{
+    lineNumber: null,
+    content: `$ ${command}`,
+    type: 'context'
+  }, {
+    lineNumber: null,
+    content: 'This command will be executed in your system shell.',
+    type: 'empty'
+  }];
+};
+
+export const generateToolPreviewData = async (toolName: string, parameters: Record<string, any>): Promise<ToolPreviewData> => {
+  let diffLines: DiffLine[] = [];
+  let filePath = '';
+  let command = '';
+
+  switch (toolName) {
+    case 'write_file':
+      filePath = parameters.path;
+      diffLines = generateWriteDiffLines(parameters.content);
+      break;
+
+    case 'update_file':
+      filePath = parameters.path;
+      try {
+        const oldContent = fs.readFileSync(parameters.path, 'utf-8');
+
+        if (parameters.content !== undefined) {
+          diffLines = generateUpdateDiffLines(oldContent, parameters.content);
+        } else if (parameters.updates && Array.isArray(parameters.updates)) {
+          const oldLines = oldContent.split('\n');
+          const newLines = [...oldLines];
+
+          const sortedUpdates = [...parameters.updates].sort((a, b) => b.startLine - a.startLine);
+
+          for (const update of sortedUpdates) {
+            const updateLines = update.newContent.split('\n');
+            newLines.splice(update.startLine - 1, update.endLine - update.startLine + 1, ...updateLines);
+          }
+
+          const newContent = newLines.join('\n');
+          diffLines = generateUpdateDiffLines(oldContent, newContent);
+        } else {
+          diffLines = [{
+            lineNumber: null,
+            content: 'Invalid update parameters',
+            type: 'empty'
+          }];
+        }
+      } catch (error) {
+        if (parameters.content) {
+          diffLines = generateWriteDiffLines(parameters.content);
+        } else {
+          diffLines = [{
+            lineNumber: null,
+            content: `Error reading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            type: 'empty'
+          }];
+        }
+      }
+      break;
+
+    case 'delete_file':
+      filePath = parameters.path;
+      diffLines = generateDeleteDiffLines(parameters.path);
+      break;
+
+    case 'execute_shell':
+      command = parameters.command;
+      filePath = 'shell';
+      diffLines = generateExecuteShellDiffLines(parameters.command);
+      break;
+
+    default:
+      filePath = 'unknown';
+      diffLines = [{
+        lineNumber: null,
+        content: JSON.stringify(parameters, null, 2),
+        type: 'context'
+      }];
+  }
+
+  return {
+    toolName,
+    filePath,
+    diffLines,
+    command
+  };
 };
 
 export const generateToolPreview = async (toolName: string, parameters: Record<string, any>): Promise<string> => {

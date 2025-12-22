@@ -204,11 +204,13 @@ export class Orchestrator {
       });
       if (!aiResponse.error) {
         const filteredContent = filterToolCallsFromText(accumulated);
-        this.emit({
-          type: 'ai_stream_complete',
-          timestamp: new Date(),
-          data: { content: filteredContent }
-        });
+        if (filteredContent && filteredContent.length > 0) {
+          this.emit({
+            type: 'ai_stream_complete',
+            timestamp: new Date(),
+            data: { content: filteredContent }
+          });
+        }
       } else {
         this.emit({
           type: 'ai_stream_error',
@@ -403,6 +405,33 @@ export class Orchestrator {
         jsonContent = codeBlockMatch[1].trim();
       }
 
+      try {
+        const parsed = JSON.parse(jsonContent);
+
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item.tool && typeof item.tool === 'string') {
+              toolCalls.push({
+                toolName: item.tool,
+                parameters: item.parameters || {},
+                id: this.generateToolCallId()
+              });
+            }
+          }
+          if (toolCalls.length > 0) {
+            return toolCalls;
+          }
+        } else if (parsed.tool && typeof parsed.tool === 'string') {
+          toolCalls.push({
+            toolName: parsed.tool,
+            parameters: parsed.parameters || {},
+            id: this.generateToolCallId()
+          });
+          return toolCalls;
+        }
+      } catch (parseError) {
+      }
+
       const jsonArrayMatch = jsonContent.match(/\[\s*\{[\s\S]*?"tool"[\s\S]*?\}\s*\]/);
       if (jsonArrayMatch) {
         try {
@@ -426,40 +455,40 @@ export class Orchestrator {
         }
       }
 
-      const jsonObjectMatches = jsonContent.match(/\{[^{}]*"tool"[^{}]*"parameters"[^{}]*\}/g);
-      if (jsonObjectMatches) {
-        for (const match of jsonObjectMatches) {
-          try {
-            const parsed = JSON.parse(match);
-            if (parsed.tool && typeof parsed.tool === 'string') {
-              toolCalls.push({
-                toolName: parsed.tool,
-                parameters: parsed.parameters || {},
-                id: this.generateToolCallId()
-              });
+      let bracketCount = 0;
+      let startIndex = -1;
+      const potentialObjects: string[] = [];
+
+      for (let i = 0; i < jsonContent.length; i++) {
+        if (jsonContent[i] === '{') {
+          if (bracketCount === 0) {
+            startIndex = i;
+          }
+          bracketCount++;
+        } else if (jsonContent[i] === '}') {
+          bracketCount--;
+          if (bracketCount === 0 && startIndex !== -1) {
+            const obj = jsonContent.substring(startIndex, i + 1);
+            if (obj.includes('"tool"')) {
+              potentialObjects.push(obj);
             }
-          } catch (e) {
-            continue;
+            startIndex = -1;
           }
         }
       }
 
-      if (toolCalls.length === 0) {
-        const relaxedMatch = jsonContent.match(/\{\s*["']tool["']\s*:\s*["']([^"']+)["']\s*,\s*["']parameters["']\s*:\s*(\{[^}]*\})\s*\}/);
-        if (relaxedMatch) {
-          try {
-            const parsed = {
-              tool: relaxedMatch[1],
-              parameters: JSON.parse(relaxedMatch[2])
-            };
+      for (const objStr of potentialObjects) {
+        try {
+          const parsed = JSON.parse(objStr);
+          if (parsed.tool && typeof parsed.tool === 'string') {
             toolCalls.push({
               toolName: parsed.tool,
-              parameters: parsed.parameters,
+              parameters: parsed.parameters || {},
               id: this.generateToolCallId()
             });
-          } catch (e) {
-            console.error('[Orchestrator] Relaxed parsing failed:', e);
           }
+        } catch (e) {
+          continue;
         }
       }
     } catch (e) {

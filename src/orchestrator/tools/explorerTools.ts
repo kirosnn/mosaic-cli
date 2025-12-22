@@ -439,51 +439,51 @@ function formatFilePreviews(previews: Array<{ path: string; size: number; linesR
 
 export const exploreWorkspaceTool: Tool = {
   name: 'explore_workspace',
-  description: 'Explore and analyze the workspace structure. Provides an overview of the project including file structure, project type, languages, dependencies, and configuration. Use lower values for maxFiles and maxPreviewLines to reduce token usage.',
+  description: 'Create an intelligent overview of the workspace structure. DEFAULT MODE is MINIMAL (low token usage). Use this ONLY when you need to understand the overall project organization. For listing specific directories, use list_directory instead. USAGE: (1) Quick map: use defaults for minimal token cost. (2) Detailed analysis: set includeAnalysis=true, includeFilePreviews=true, maxDepth=2-3 only when absolutely necessary. (3) Avoid conflicts with list_directory: use explore_workspace for high-level context, list_directory for specific folder contents.',
   parameters: [
     {
       name: 'maxDepth',
       type: 'number',
-      description: 'Maximum depth to explore directories (default: 2)',
+      description: 'Maximum depth to explore directories (default: 1, recommended: 1-2, max: 3)',
       required: false,
-      default: 2
+      default: 1
     },
     {
       name: 'includeAnalysis',
       type: 'boolean',
-      description: 'Include detailed project analysis (default: true)',
+      description: 'Include detailed project analysis with dependencies, scripts, languages (default: false, expensive in tokens)',
       required: false,
-      default: true
+      default: false
     },
     {
       name: 'includeFilePreviews',
       type: 'boolean',
-      description: 'Read and include previews of important files (default: true)',
+      description: 'Read and include previews of important files like README, package.json (default: false, expensive in tokens)',
       required: false,
-      default: true
+      default: false
     },
     {
       name: 'maxFiles',
       type: 'number',
-      description: 'Maximum number of files to preview (default: 4)',
+      description: 'Maximum number of files to preview when includeFilePreviews=true (default: 2, max recommended: 3)',
       required: false,
-      default: 4
+      default: 2
     },
     {
       name: 'maxPreviewLines',
       type: 'number',
-      description: 'Maximum lines per file preview (default: 15)',
+      description: 'Maximum lines per file preview when includeFilePreviews=true (default: 10, max recommended: 20)',
       required: false,
-      default: 15
+      default: 10
     }
   ],
   execute: async (params: Record<string, any>, context: AgentContext): Promise<ToolResult> => {
     try {
-      const maxDepth = params.maxDepth || 2;
-      const includeAnalysis = params.includeAnalysis !== false;
-      const includeFilePreviews = params.includeFilePreviews !== false;
-      const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 4;
-      const maxPreviewLines = typeof params.maxPreviewLines === 'number' ? params.maxPreviewLines : 15;
+      const maxDepth = params.maxDepth || 1;
+      const includeAnalysis = params.includeAnalysis === true;
+      const includeFilePreviews = params.includeFilePreviews === true;
+      const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 2;
+      const maxPreviewLines = typeof params.maxPreviewLines === 'number' ? params.maxPreviewLines : 10;
 
       let output = '';
 

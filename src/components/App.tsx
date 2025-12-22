@@ -8,7 +8,11 @@ import { getPackageVersion } from '../config/index.js';
 
 const version = getPackageVersion();
 
-const App: React.FC = () => {
+interface AppProps {
+  initialVerboseMode?: boolean;
+}
+
+const App: React.FC<AppProps> = ({ initialVerboseMode = false }) => {
   const [currentView, setCurrentView] = useState<'welcome' | 'config' | 'main'>('welcome');
   const [missingConfigs, setMissingConfigs] = useState<string[]>([]);
 
@@ -31,7 +35,7 @@ const App: React.FC = () => {
   };
 
   if (currentView === 'main') {
-    return <ChatInterface />;
+    return <ChatInterface initialVerboseMode={initialVerboseMode} />;
   }
 
   if (currentView === 'welcome') {
