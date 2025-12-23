@@ -104,7 +104,7 @@ export const generateCreateDirectoryPreview = (path: string): string => {
 };
 
 export const generateExecuteShellPreview = (command: string): string => {
-  return `Executing shell command:\n\n  $ ${command}\n\nThis command will be executed in your system shell.`;
+  return `Executing shell command:\n\n  ${command}\n\nThis command will be executed in your system bash.`;
 };
 
 export const generateWriteDiffLines = (content: string): DiffLine[] => {
@@ -237,11 +237,11 @@ export const generateDeleteDiffLines = (path: string): DiffLine[] => {
 export const generateExecuteShellDiffLines = (command: string): DiffLine[] => {
   return [{
     lineNumber: null,
-    content: `$ ${command}`,
+    content: `${command}`,
     type: 'context'
   }, {
     lineNumber: null,
-    content: 'This command will be executed in your system shell.',
+    content: 'This command will be executed in your system bash.',
     type: 'empty'
   }];
 };
@@ -304,7 +304,7 @@ export const generateToolPreviewData = async (toolName: string, parameters: Reco
 
     case 'execute_shell':
       command = parameters.command;
-      filePath = 'shell';
+      filePath = '';
       diffLines = generateExecuteShellDiffLines(parameters.command);
       break;
 

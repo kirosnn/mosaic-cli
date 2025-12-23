@@ -10,11 +10,11 @@ import { formatToolName, formatToolResult } from '../utils/toolFormatters.js';
 import ChatHeader from './ChatHeader.js';
 import MessageList from './MessageList.js';
 import ChatInput from './ChatInput.js';
+import CustomTextInput from './CustomTextInput.js';
 import DropdownMenu from './DropdownMenu.js';
 import GlowingText from './GlowingText.js';
 import ToolExecutionList from './ToolExecutionList.js';
 import ToolApprovalPrompt from './ToolApprovalPrompt.js';
-import ToolApprovalPromptNew from './ToolApprovalPromptNew.js';
 import LoadingStatus from './LoadingStatus.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useToolApproval } from '../hooks/useToolApproval.js';
@@ -802,15 +802,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
   useInput((inputChar, key) => {
     if (!isAddingCustomModel) return;
 
-    if (key.return) {
-      handleCustomModelSubmit();
-    } else if (key.escape) {
+    if (key.escape) {
       setIsAddingCustomModel(false);
       setCustomModelInput('');
-    } else if (key.backspace || key.delete) {
-      setCustomModelInput(prev => prev.slice(0, -1));
-    } else if (inputChar && !key.ctrl && !key.meta) {
-      setCustomModelInput(prev => prev + inputChar);
     }
   });
 
@@ -903,10 +897,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
 
       const userMessage: MessageWithTools = { role: 'user', content: trimmedValue };
       setMessages(prev => [...prev, userMessage]);
-
-      const userTokens = estimateTokens(trimmedValue);
-      setTokenCount(userTokens);
-      currentTokenCount.current = userTokens;
 
       setIsLoading(true);
       setInput('');
@@ -1109,7 +1099,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         />
 
         {pendingApproval && pendingApproval.previewData && (
-          <ToolApprovalPromptNew
+          <ToolApprovalPrompt
             toolName={pendingApproval.toolName}
             filePath={pendingApproval.previewData.filePath}
             diffLines={pendingApproval.previewData.diffLines}
@@ -1119,14 +1109,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
             onReject={pendingApproval.onReject}
             onApproveAll={pendingApproval.onApproveAll || (() => {})}
             onModify={pendingApproval.onModify || (() => {})}
-          />
-        )}
-
-        {pendingApproval && !pendingApproval.previewData && (
-          <ToolApprovalPrompt
-            toolName={pendingApproval.toolName}
-            preview={pendingApproval.preview}
-            theme={theme}
           />
         )}
 
@@ -1155,8 +1137,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
           </Box>
           <Box>
             <Text color={theme.colors.primary}>&gt; </Text>
-            <Text color={theme.colors.text}>{customModelInput}</Text>
-            <Text color={theme.colors.text}>█</Text>
+            <CustomTextInput
+              value={customModelInput}
+              onChange={setCustomModelInput}
+              onSubmit={handleCustomModelSubmit}
+              placeholder="model-name"
+              focus={true}
+            />
           </Box>
           <Box marginTop={1}>
             <Text dimColor>Press Enter to confirm, Esc to cancel</Text>

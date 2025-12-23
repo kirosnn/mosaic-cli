@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
-import TextInput from 'ink-text-input';
+import React from 'react';
+import { Box, Text } from 'ink';
+import CustomTextInput from './CustomTextInput.js';
 import { Theme } from '../config/themes.js';
 
 interface ChatInputProps {
@@ -24,56 +24,37 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onSubmit,
   onHistoryNavigation
 }) => {
-  const isHistoryNavigationRef = useRef(false);
-  const previousInputRef = useRef(input);
-
-  useEffect(() => {
-    if (isHistoryNavigationRef.current && previousInputRef.current !== input) {
-      isHistoryNavigationRef.current = false;
-    }
-    previousInputRef.current = input;
-  }, [input]);
-
   const handleSubmit = (value: string) => {
     if (!isMenuOpen) {
       onSubmit(value);
     }
   };
 
-  const handleChange = (value: string) => {
-    if (!isHistoryNavigationRef.current) {
-      onInputChange(value);
+  const handleUpArrow = () => {
+    if (!isMenuOpen && onHistoryNavigation) {
+      onHistoryNavigation('up');
     }
   };
 
-  useInput((inputChar, key) => {
-    if (isMenuOpen) {
-      return;
+  const handleDownArrow = () => {
+    if (!isMenuOpen && onHistoryNavigation) {
+      onHistoryNavigation('down');
     }
-
-    if (onHistoryNavigation) {
-      if (key.upArrow) {
-        isHistoryNavigationRef.current = true;
-        onHistoryNavigation('up');
-        return;
-      } else if (key.downArrow) {
-        isHistoryNavigationRef.current = true;
-        onHistoryNavigation('down');
-        return;
-      }
-    }
-  });
+  };
 
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.secondary}>{'─'.repeat(terminalWidth)}</Text>
       <Box>
         <Text color={theme.colors.secondary}>&gt; </Text>
-        <TextInput
+        <CustomTextInput
           value={input}
-          onChange={handleChange}
+          onChange={onInputChange}
           onSubmit={handleSubmit}
+          onUpArrow={handleUpArrow}
+          onDownArrow={handleDownArrow}
           placeholder="Type your message..."
+          focus={!isMenuOpen}
         />
       </Box>
       <Text color={theme.colors.secondary}>{'─'.repeat(terminalWidth)}</Text>

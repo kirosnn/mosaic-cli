@@ -25,6 +25,11 @@ export interface AgentContext {
   workingDirectory: string;
   environment: Record<string, string>;
   metadata: Record<string, any>;
+  pathValidator?: {
+    validate: (targetPath: string) => string;
+    isSafe: (targetPath: string) => boolean;
+    allowPath: (externalPath: string) => void;
+  };
 }
 
 export interface Message {
@@ -97,6 +102,19 @@ export interface OrchestratorEvent {
   type: OrchestratorEventType;
   timestamp: Date;
   data?: any;
+}
+
+export function createTool<TParams extends Record<string, any> = Record<string, any>>(
+  def: {
+    name: string;
+    description: string;
+    parameters: ToolParameter[];
+    execute: (params: TParams, context: AgentContext) => Promise<ToolResult>;
+  }
+): Tool {
+  // We keep strong typing at call sites via TParams, but coerce to the
+  // non-generic Tool interface for storage in the registry.
+  return def as unknown as Tool;
 }
 
 export type OrchestratorEventListener = (event: OrchestratorEvent) => void;

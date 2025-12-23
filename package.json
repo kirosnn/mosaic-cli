@@ -1,6 +1,6 @@
 {
   "name": "mosaic-cli",
-  "version": "0.0.4.33",
+  "version": "0.0.4.40",
   "description": "An AI-powered CLI code assistant",
   "type": "module",
   "main": "dist/index.js",

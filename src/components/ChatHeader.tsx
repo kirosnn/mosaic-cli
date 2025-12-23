@@ -69,32 +69,39 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ version, provider, currentDir, 
   const formattedModel = useMemo(() => formatModelName(provider?.model), [provider?.model]);
 
   return (
-    <Box paddingX={2} paddingY={1}>
-      <Box marginRight={3} flexDirection="column">
-        <Text bold color={theme.colors.accent}>
-          {'  ███  ███'}
-        </Text>
-        <Text bold color={theme.colors.accent}>
-          {'    ████'}
-        </Text>
-        <Text bold color={theme.colors.accent}>
-          {'  ███  ███'}
-        </Text>
-      </Box>
+    <Box
+      borderStyle="single"
+      borderColor={theme.colors.accent}
+      paddingX={1}
+      paddingY={0}
+    >
+      <Box paddingX={2} paddingY={1}>
+        <Box marginRight={3} flexDirection="column">
+          <Text bold color={theme.colors.accent}>
+            {'███╗   ███╗'}
+          </Text>
+          <Text bold color={theme.colors.accent}>
+            {'████╗ ████║'}
+          </Text>
+          <Text bold color={theme.colors.accent}>
+            {'███╔████╔███║'}
+          </Text>
+        </Box>
 
-      <Box flexDirection="column">
-        <Box>
-          <Text bold color={theme.colors.primary}>Mosaic CLI</Text>
-          <Text bold color={theme.colors.secondary}> · v{version}</Text>
-          {verboseMode && <Text bold color={theme.colors.accent}> · VERBOSE</Text>}
-        </Box>
-        <Box>
-          <Text color={theme.colors.secondary}>{formattedModel}</Text>
-          <Text color={theme.colors.secondary}> · </Text>
-          <Text color={theme.colors.secondary}>{formattedProvider}</Text>
-        </Box>
-        <Box>
-          <Text color={theme.colors.secondary}>{currentDir}</Text>
+        <Box flexDirection="column">
+          <Box>
+            <Text bold color={theme.colors.primary}>Mosaic CLI</Text>
+            <Text bold color={theme.colors.secondary}> · v{version}</Text>
+            {verboseMode && <Text bold color={theme.colors.accent}> · VERBOSE</Text>}
+          </Box>
+          <Box>
+            <Text color={theme.colors.secondary}>{formattedModel}</Text>
+            <Text color={theme.colors.secondary}> · </Text>
+            <Text color={theme.colors.secondary}>{formattedProvider}</Text>
+          </Box>
+          <Box>
+            <Text color={theme.colors.secondary}>{currentDir}</Text>
+          </Box>
         </Box>
       </Box>
     </Box>

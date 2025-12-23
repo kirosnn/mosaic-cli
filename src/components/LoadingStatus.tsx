@@ -60,7 +60,7 @@ const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount }) => {
         <Text color={theme.colors.secondary}>
           {' '}
           to interrupt
-          {showTokens ? ` - ↑ ${formatTokens(tokenCount)} tokens` : ''}
+          {showTokens ? ` - ${formatTokens(tokenCount)} tokens ↓` : ''}
           {' '} - {formatElapsedTime(elapsedTime)})
         </Text>
       </Box>

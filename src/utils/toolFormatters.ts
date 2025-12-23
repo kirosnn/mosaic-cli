@@ -97,7 +97,7 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
             const output = String(data.output).trim();
             return output.length > 50 ? output.substring(0, 47) + '...' : output;
           }
-          break;
+          return 'Empty';
         }
       case 'search_code':
         if (data.count !== undefined) {

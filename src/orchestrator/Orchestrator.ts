@@ -17,6 +17,7 @@ import { IntentionDetector } from './planning/IntentionDetector.js';
 import { TaskPlanner, ExecutionPlan } from './planning/TaskPlanner.js';
 import { buildOrchestratorSystemPrompt } from '../config/systemPrompt.js';
 import { filterToolCallsFromText } from '../utils/streamFilter.js';
+import { createPathValidator } from './tools/pathValidator.js';
 
 export class Orchestrator {
   private agents: Map<string, Agent> = new Map();
@@ -53,15 +54,26 @@ export class Orchestrator {
       defaultAgent: config.defaultAgent
     };
 
+    const workingDirectory = process.cwd();
+    const pathValidator = createPathValidator(workingDirectory);
+
+    const cleanEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) {
+        cleanEnv[key] = String(value);
+      }
+    }
+
     this.state = {
       currentAgent: config.defaultAgent || 'default',
       executionHistory: [],
       toolResults: new Map(),
       context: {
         conversationHistory: [],
-        workingDirectory: process.cwd(),
-        environment: process.env as Record<string, string>,
-        metadata: {}
+        workingDirectory: workingDirectory,
+        environment: cleanEnv,
+        metadata: {},
+        pathValidator: pathValidator
       }
     };
   }
