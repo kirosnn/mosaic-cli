@@ -25,10 +25,21 @@ export class OllamaClient {
   private baseUrl: string;
   private connectionVerified: boolean = false;
   private authenticationInProgress: boolean = false;
+  private apiKey?: string;
 
-  constructor(baseUrl: string = 'http://localhost:11434') {
+  constructor(baseUrl: string = 'http://localhost:11434', apiKey?: string) {
     this.baseUrl = baseUrl;
-    this.client = new Ollama({ host: baseUrl });
+    this.apiKey = apiKey;
+
+    const config: any = { host: baseUrl };
+
+    if (apiKey) {
+      config.headers = {
+        'Authorization': `Bearer ${apiKey}`
+      };
+    }
+
+    this.client = new Ollama(config);
   }
 
   private async openUrl(url: string): Promise<void> {

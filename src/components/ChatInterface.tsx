@@ -338,8 +338,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       } else if (event.type === 'final_response') {
         isStreaming.current = false;
       } else if (event.type === 'token_usage') {
+        const source = event.data?.source;
         const tokens = typeof event.data?.tokens === 'number' ? event.data.tokens : 0;
-        if (tokens > 0) {
+
+        if (tokens > 0 && source !== 'intention_analysis' && source !== 'task_planning') {
           setTokenCount(prev => {
             const newCount = prev + tokens;
             currentTokenCount.current = newCount;
@@ -886,6 +888,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       executedTools.current = [];
       currentResponse.current = '';
       currentTokenCount.current = 0;
+      setTokenCount(0);
 
       historyService.addEntry({
         message: trimmedValue,

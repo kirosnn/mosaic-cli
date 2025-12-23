@@ -140,35 +140,97 @@ export class AIProvider {
     });
     this.isReasoningModel = isReasoningModel(config.type, config.model);
 
-    if (config.type === 'mistral') {
-      const modelData = getModelDataFromFallback('mistralai', config.model);
-      const contextLimit = modelData?.limit?.context;
-      const outputLimit = modelData?.limit?.output;
+    const providerToApiKey: Record<ProviderType, string> = {
+      'openai': 'openai',
+      'anthropic': 'anthropic',
+      'openrouter': 'openrouter',
+      'ollama': 'ollama-cloud',
+      'xai': 'xai',
+      'mistral': 'mistralai',
+      'custom': ''
+    };
 
-      this.MAX_TOKENS = typeof contextLimit === 'number' && contextLimit > 0
-        ? contextLimit
-        : 16384;
+    const apiKey = providerToApiKey[config.type];
+    const modelData = apiKey ? getModelDataFromFallback(apiKey, config.model) : null;
+    const contextLimit = modelData?.limit?.context;
+    const outputLimit = modelData?.limit?.output;
 
-      this.maxCompletionTokens = typeof outputLimit === 'number' && outputLimit > 0
-        ? outputLimit
-        : undefined;
-    } else {
-      this.MAX_TOKENS = 16384;
-      this.maxCompletionTokens = undefined;
-    }
+    const defaultLimits: Record<ProviderType, { context: number; output: number }> = {
+      'openai': { context: 128000, output: 16384 },
+      'anthropic': { context: 200000, output: 8192 },
+      'openrouter': { context: 128000, output: 16384 },
+      'ollama': { context: 200000, output: 8192 },
+      'xai': { context: 131072, output: 8192 },
+      'mistral': { context: 32768, output: 8192 },
+      'custom': { context: 128000, output: 8192 }
+    };
+
+    const defaultLimit = defaultLimits[config.type];
+
+    this.MAX_TOKENS = typeof contextLimit === 'number' && contextLimit > 0
+      ? contextLimit
+      : defaultLimit.context;
+
+    this.maxCompletionTokens = typeof outputLimit === 'number' && outputLimit > 0
+      ? outputLimit
+      : defaultLimit.output;
+
+    console.log(`[AIProvider] Initialized ${config.type}/${config.model}`);
+    console.log(`[AIProvider] Context window: ${this.MAX_TOKENS.toLocaleString()} tokens`);
+    console.log(`[AIProvider] Max completion: ${this.maxCompletionTokens?.toLocaleString() || 'unlimited'} tokens`);
+    console.log(`[AIProvider] Reasoning model: ${this.isReasoningModel}`);
 
     if (config.type === 'ollama') {
-      this.ollamaClient = new OllamaClient(config.baseUrl || 'http://localhost:11434');
+      const baseUrl = config.baseUrl || 'http://localhost:11434';
+      console.log(`[AIProvider] Ollama baseUrl: ${baseUrl}`);
+      console.log(`[AIProvider] Ollama API key: ${this.apiKey ? 'configured' : 'not configured'}`);
+      this.ollamaClient = new OllamaClient(baseUrl, this.apiKey);
     }
   }
 
   private estimateTokens(text: string): number {
-    return Math.ceil(text.length / this.TOKEN_RATIO);
+    if (!text || text.length === 0) return 0;
+
+    let ratio = this.TOKEN_RATIO;
+
+    const codePatterns = /```[\s\S]*?```|`[^`]+`|[{}\[\]();]|function|const|let|var|if|else|return/;
+    const hasCode = codePatterns.test(text);
+
+    const jsonPattern = /^\s*[\[{][\s\S]*[\]}]\s*$/;
+    const isJson = jsonPattern.test(text);
+
+    const hasMultibyteChars = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/.test(text);
+
+    if (isJson) {
+      ratio = 3;
+    } else if (hasCode) {
+      ratio = 3.2;
+    } else if (hasMultibyteChars) {
+      ratio = 2;
+    } else {
+      ratio = 3.5;
+    }
+
+    const estimatedTokens = Math.ceil(text.length / ratio);
+
+    return Math.ceil(estimatedTokens * 1.1);
   }
 
   private truncateMessages(messages: Message[], maxTokens: number): Message[] {
     const systemMessage = messages.find(msg => msg.role === 'system');
     const otherMessages = messages.filter(msg => msg.role !== 'system');
+
+    const percentageReserved = Math.ceil(maxTokens * (this.isReasoningModel ? 0.4 : 0.3));
+    const minReserved = 8192;
+
+    const reservedForResponse = this.maxCompletionTokens
+      ? Math.max(this.maxCompletionTokens, minReserved)
+      : Math.max(percentageReserved, minReserved);
+
+    const effectiveLimit = Math.max(
+      maxTokens - reservedForResponse,
+      Math.ceil(maxTokens * 0.5)
+    );
 
     let totalTokens = systemMessage ? this.estimateTokens(systemMessage.content) : 0;
     const keptMessages: Message[] = [];
@@ -176,12 +238,30 @@ export class AIProvider {
     for (let i = otherMessages.length - 1; i >= 0; i--) {
       const msgTokens = this.estimateTokens(otherMessages[i].content);
 
-      if (totalTokens + msgTokens > maxTokens) {
+      if (totalTokens + msgTokens > effectiveLimit) {
         break;
       }
 
       totalTokens += msgTokens;
       keptMessages.unshift(otherMessages[i]);
+    }
+
+    if (keptMessages.length === 0 && otherMessages.length > 0) {
+      keptMessages.push(otherMessages[otherMessages.length - 1]);
+    }
+
+    const dropped = otherMessages.length - keptMessages.length;
+    if (dropped > 0) {
+      console.log(`[AIProvider] Truncated ${dropped} message(s) to fit context window`);
+      console.log(`[AIProvider] Kept ${keptMessages.length}/${otherMessages.length} messages`);
+    }
+
+    console.log(`[AIProvider] Total input tokens: ~${totalTokens.toLocaleString()}/${effectiveLimit.toLocaleString()}`);
+    console.log(`[AIProvider] Reserved for response: ~${reservedForResponse.toLocaleString()} tokens`);
+
+    const usage = (totalTokens / maxTokens) * 100;
+    if (usage > 80) {
+      console.warn(`[AIProvider] WARNING: Using ${usage.toFixed(1)}% of context window!`);
     }
 
     if (systemMessage) {
@@ -309,7 +389,7 @@ export class AIProvider {
         message: 'OpenAI returned empty response',
         provider: 'OpenAI',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 
@@ -380,7 +460,7 @@ export class AIProvider {
         message: 'Anthropic returned empty response',
         provider: 'Anthropic',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 
@@ -434,7 +514,7 @@ export class AIProvider {
         message: 'OpenRouter returned empty response',
         provider: 'OpenRouter',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 
@@ -451,7 +531,10 @@ export class AIProvider {
     }
 
     try {
+      console.log(`[AIProvider] Calling Ollama with model: ${this.config.model}`);
       const response = await this.ollamaClient.chat(this.config.model, messages, true);
+      console.log(`[AIProvider] Ollama raw response:`, JSON.stringify(response, null, 2));
+
       let content = response.message?.content || '';
       let reasoning: string | undefined;
 
@@ -468,13 +551,19 @@ export class AIProvider {
         }
       }
 
+      console.log(`[AIProvider] Extracted content length: ${content.length}, reasoning: ${reasoning ? 'yes' : 'no'}`);
+
       if (!content && !reasoning) {
+        console.error(`[AIProvider] ERROR: Empty response from Ollama`);
+        console.error(`[AIProvider] Response structure:`, Object.keys(response));
+        console.error(`[AIProvider] Message structure:`, response.message ? Object.keys(response.message) : 'no message');
+
         throw new AIError({
           type: AIErrorType.API_ERROR,
           message: 'Ollama returned empty response',
           provider: 'Ollama',
           model: this.config.model,
-          retryable: false
+          retryable: true
         });
       }
 
@@ -527,7 +616,7 @@ export class AIProvider {
         message: 'xAI returned empty response',
         provider: 'xAI',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 
@@ -575,7 +664,7 @@ export class AIProvider {
         message: 'Mistral returned empty response',
         provider: 'Mistral',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 
@@ -626,7 +715,7 @@ export class AIProvider {
         message: 'Custom provider returned empty response',
         provider: 'Custom provider',
         model: this.config.model,
-        retryable: false
+        retryable: true
       });
     }
 

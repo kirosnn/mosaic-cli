@@ -49,6 +49,8 @@ const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount }) => {
     return `${hours}h ${minutes}m`;
   };
 
+  const showTokens = tokenCount > 0;
+
   return (
     <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
       <Box>
@@ -57,7 +59,9 @@ const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount }) => {
         <Text bold color={theme.colors.secondary}>(esc</Text>
         <Text color={theme.colors.secondary}>
           {' '}
-          to interrupt - ↓ {formatTokens(tokenCount)} tokens - {formatElapsedTime(elapsedTime)})
+          to interrupt
+          {showTokens ? ` - ↑ ${formatTokens(tokenCount)} tokens` : ''}
+          {' '} - {formatElapsedTime(elapsedTime)})
         </Text>
       </Box>
     </Box>

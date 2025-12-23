@@ -78,8 +78,8 @@ export class TaskPlanner {
 
     const hasExplore = intention.requiredTools.includes('explore_workspace');
     const hasSearchCode = intention.requiredTools.includes('search_code');
-    const needsCodeContext = intention.suggestedApproach.toLowerCase().includes('search') ||
-                              intention.suggestedApproach.toLowerCase().includes('context');
+    const needsCodeContext = intention.primaryIntent.toLowerCase().includes('search') ||
+                              intention.primaryIntent.toLowerCase().includes('context');
 
     if (hasExplore) {
       steps.push({
