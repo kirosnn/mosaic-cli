@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import TextInput from 'ink-text-input';
+import CustomTextInput from './CustomTextInput.js';
 import {
   ProviderType,
   PROVIDERS,
@@ -195,7 +195,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete, onBack }) => 
 
           <Box marginLeft={2}>
             <Text color="gray">Model: </Text>
-            <TextInput
+            <CustomTextInput
               value={customModel}
               onChange={setCustomModel}
               onSubmit={handleCustomModelSubmit}
@@ -249,7 +249,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete, onBack }) => 
 
           <Box>
             <Text color="gray">API Key: </Text>
-            <TextInput
+            <CustomTextInput
               value={apiKey}
               onChange={setApiKey}
               onSubmit={handleApiKeySubmit}
@@ -274,7 +274,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ onComplete, onBack }) => 
 
         <Box marginLeft={2}>
           <Text color="gray">Base URL: </Text>
-          <TextInput
+          <CustomTextInput
             value={baseUrl}
             onChange={setBaseUrl}
             onSubmit={handleBaseUrlSubmit}

@@ -23,5 +23,8 @@ export const commands: Command[] = [
   { name: '/model', description: 'Change model', action: 'model' },
   { name: '/verbose', description: 'Toggle verbose mode', action: 'verbose' },
   { name: '/init', description: 'Create MOSAIC.md for workspace', action: 'init' },
-  { name: '/rewind', description: 'Rewind to previous message', action: 'rewind' },
+  { name: '/undo', description: 'Undo to previous message', action: 'undo' },
+  { name: '/redo', description: 'Redo previously undone messages', action: 'redo' },
+  { name: '/apikey', description: 'Configure or update API keys for providers', action: 'apikey' },
+  { name: '/ide', description: 'Interact with running IDEs', action: 'ide' },
 ];

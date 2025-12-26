@@ -2,6 +2,7 @@ import { join } from 'path';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { MOSAIC_DIR, ensureMosaicDir } from '../config/paths.js';
 import { ProviderConfig } from '../config/providers.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 const HISTORY_FILE = join(MOSAIC_DIR, 'history.json');
 const MAX_HISTORY_SIZE = 1000;
@@ -60,7 +61,8 @@ export class HistoryService {
     try {
       writeFileSync(HISTORY_FILE, JSON.stringify(this.history, null, 2), 'utf-8');
     } catch (error) {
-      console.error('Failed to save history:', error);
+      const details = error instanceof Error ? error.stack || error.message : String(error);
+      verboseLogger.logMessage(`Failed to save history: ${details}`, 'error');
     }
   }
 

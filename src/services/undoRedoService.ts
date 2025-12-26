@@ -16,13 +16,21 @@ export interface ConversationSnapshot {
   filesModified: FileSnapshot[];
 }
 
-class RewindService {
+export interface RedoState {
+  targetMessageIndex: number;
+  filesModified: FileSnapshot[];
+  removedMessagesCount: number;
+}
+
+class UndoRedoService {
   private snapshots: ConversationSnapshot[] = [];
+  private redoStack: RedoState[] = [];
   private sessionActive: boolean = true;
   private fileContentCache: Map<string, string> = new Map();
 
   constructor() {
     this.snapshots = [];
+    this.redoStack = [];
   }
 
   private optimizeCache(): void {
@@ -95,23 +103,27 @@ class RewindService {
 
   clearSnapshots(): void {
     this.snapshots = [];
+    this.redoStack = [];
     this.fileContentCache.clear();
   }
 
   removeSnapshotsAfter(messageIndex: number): void {
     this.snapshots = this.snapshots.filter(s => s.messageIndex <= messageIndex);
+    this.redoStack = [];
     this.optimizeCache();
   }
 
   endSession(): void {
     this.sessionActive = false;
     this.snapshots = [];
+    this.redoStack = [];
     this.fileContentCache.clear();
   }
 
   startNewSession(): void {
     this.sessionActive = true;
     this.snapshots = [];
+    this.redoStack = [];
     this.fileContentCache.clear();
   }
 
@@ -129,11 +141,41 @@ class RewindService {
     };
   }
 
-  async restoreToSnapshot(messageIndex: number): Promise<{ filesRestored: string[], errors: string[] }> {
+  async restoreToSnapshot(messageIndex: number, currentMessagesLength: number): Promise<{ filesRestored: string[], errors: string[] }> {
     const filesRestored: string[] = [];
     const errors: string[] = [];
 
     const snapshotsToRestore = this.snapshots.filter(s => s.messageIndex > messageIndex);
+
+    const currentFileStates: FileSnapshot[] = [];
+    const filesToCapture = new Set<string>();
+
+    for (const snapshot of snapshotsToRestore) {
+      for (const file of snapshot.filesModified) {
+        filesToCapture.add(file.path);
+      }
+    }
+
+    for (const filePath of filesToCapture) {
+      try {
+        const exists = existsSync(filePath);
+        const content = exists ? require('fs').readFileSync(filePath, 'utf-8') : '';
+        currentFileStates.push({
+          path: filePath,
+          content,
+          exists
+        });
+      } catch (error) {
+      }
+    }
+
+    const redoState: RedoState = {
+      targetMessageIndex: messageIndex,
+      filesModified: currentFileStates,
+      removedMessagesCount: currentMessagesLength - messageIndex - 1
+    };
+
+    this.redoStack.push(redoState);
 
     const fileStates = new Map<string, FileSnapshot>();
 
@@ -162,10 +204,52 @@ class RewindService {
       }
     }
 
-    this.removeSnapshotsAfter(messageIndex);
+    this.snapshots = this.snapshots.filter(s => s.messageIndex <= messageIndex);
+    this.optimizeCache();
 
     return { filesRestored, errors };
   }
+
+  async redo(): Promise<{ filesRestored: string[], errors: string[], messagesCount: number } | null> {
+    if (this.redoStack.length === 0) {
+      return null;
+    }
+
+    const redoState = this.redoStack.pop()!;
+    const filesRestored: string[] = [];
+    const errors: string[] = [];
+
+    for (const snapshot of redoState.filesModified) {
+      try {
+        if (snapshot.exists) {
+          writeFileSync(snapshot.path, snapshot.content, 'utf-8');
+          filesRestored.push(snapshot.path);
+        } else {
+          if (existsSync(snapshot.path)) {
+            const fs = await import('fs/promises');
+            await fs.unlink(snapshot.path);
+            filesRestored.push(snapshot.path);
+          }
+        }
+      } catch (error) {
+        errors.push(`Failed to restore ${snapshot.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    return {
+      filesRestored,
+      errors,
+      messagesCount: redoState.removedMessagesCount
+    };
+  }
+
+  canUndo(): boolean {
+    return this.snapshots.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
 }
 
-export const rewindService = new RewindService();
+export const undoRedoService = new UndoRedoService();

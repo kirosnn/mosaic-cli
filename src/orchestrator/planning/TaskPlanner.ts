@@ -119,7 +119,8 @@ export class TaskPlanner {
           'file_exists': 'Verify file existence before proceeding',
           'execute_shell': 'Execute shell command to accomplish task',
           'search_code': 'Search codebase for relevant code',
-          'explore_workspace': 'Explore workspace to build context'
+          'explore_workspace': 'Explore workspace to build context',
+          'fetch': 'Fetch a web page for retrieve information'
         };
 
         steps.push({

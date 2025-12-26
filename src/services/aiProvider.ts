@@ -13,6 +13,7 @@ import { sendToXAI, sendToXAIStream } from './providers/xaiProvider.js';
 import { sendToMistral, sendToMistralStream } from './providers/mistralProvider.js';
 import { sendToCustom, sendToCustomStream } from './providers/customProvider.js';
 import { ConversationCompactor } from './conversationCompactor.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -125,6 +126,105 @@ export class AIProvider {
     return Math.ceil(estimatedTokens * 1.1);
   }
 
+  private truncateTextToTokenLimit(text: string, maxTokens: number): string {
+    if (!text || maxTokens <= 0) return '';
+
+    let low = 0;
+    let high = text.length;
+    let best = '';
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = text.slice(0, mid);
+      const tokens = this.estimateTokens(candidate);
+
+      if (tokens <= maxTokens) {
+        best = candidate;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    return best;
+  }
+
+  private hardTruncateToFit(messages: Message[], maxPromptTokens: number): Message[] {
+    if (messages.length === 0) {
+      return messages;
+    }
+
+    let totalTokens = 0;
+    for (const msg of messages) {
+      totalTokens += this.estimateTokens(msg.content);
+    }
+
+    if (totalTokens <= maxPromptTokens) {
+      return messages;
+    }
+
+    let systemMessage: Message | undefined;
+    const otherMessages: Message[] = [];
+
+    for (const msg of messages) {
+      if (!systemMessage && msg.role === 'system') {
+        systemMessage = msg;
+      } else {
+        otherMessages.push(msg);
+      }
+    }
+
+    const result: Message[] = [];
+    let usedTokens = 0;
+
+    if (systemMessage) {
+      let systemTokens = this.estimateTokens(systemMessage.content);
+
+      if (systemTokens > maxPromptTokens) {
+        const truncatedContent = this.truncateTextToTokenLimit(systemMessage.content, maxPromptTokens);
+        if (!truncatedContent) {
+          return [];
+        }
+        return [{ ...systemMessage, content: truncatedContent }];
+      }
+
+      result.push(systemMessage);
+      usedTokens += systemTokens;
+    }
+
+    const reversed = [...otherMessages].reverse();
+    const keptReversed: Message[] = [];
+
+    for (let i = 0; i < reversed.length; i++) {
+      const msg = reversed[i];
+      const tokens = this.estimateTokens(msg.content);
+
+      if (usedTokens + tokens <= maxPromptTokens) {
+        keptReversed.push(msg);
+        usedTokens += tokens;
+        continue;
+      }
+
+      const isNewestMessage = i === 0;
+      if (isNewestMessage && msg.role === 'user' && usedTokens < maxPromptTokens) {
+        const availableTokens = maxPromptTokens - usedTokens;
+        const truncatedContent = this.truncateTextToTokenLimit(msg.content, availableTokens);
+        if (truncatedContent) {
+          keptReversed.push({ ...msg, content: truncatedContent });
+          usedTokens = maxPromptTokens;
+        }
+      }
+
+      break;
+    }
+
+    if (keptReversed.length === 0) {
+      return result;
+    }
+
+    return [...result, ...keptReversed.reverse()];
+  }
+
   private truncateMessages(messages: Message[], maxTokens: number): Message[] {
     const percentageReserved = Math.ceil(maxTokens * (this.isReasoningModel ? 0.4 : 0.3));
     const minReserved = 8192;
@@ -142,9 +242,9 @@ export class AIProvider {
     const usagePercentage = (totalTokensBeforeCompaction / effectiveLimit) * 100;
 
     if (usagePercentage > 90) {
-      console.warn(`[AIProvider] Token usage at ${usagePercentage.toFixed(1)}% of limit - applying automatic compaction`);
+      verboseLogger.logMessage(`[AIProvider] Token usage at ${usagePercentage.toFixed(1)}% of limit - applying automatic compaction`, 'warning');
     } else if (usagePercentage > 70) {
-      console.log(`[AIProvider] Token usage at ${usagePercentage.toFixed(1)}% - conversation may be compacted soon`);
+      verboseLogger.logMessage(`[AIProvider] Token usage at ${usagePercentage.toFixed(1)}% - conversation may be compacted soon`, 'info');
     }
 
     return this.conversationCompactor.smartTruncate(
@@ -189,7 +289,7 @@ export class AIProvider {
               apiKey: this.apiKey,
               messages: preparedMessages,
               isReasoningModel: this.isReasoningModel,
-              maxTokens: this.MAX_TOKENS
+              maxTokens: this.maxCompletionTokens ?? 8192
             });
           case 'openrouter':
             return await sendToOpenRouter({
@@ -264,7 +364,7 @@ export class AIProvider {
               apiKey: this.apiKey,
               messages: preparedMessages,
               isReasoningModel: this.isReasoningModel,
-              maxTokens: this.MAX_TOKENS,
+              maxTokens: this.maxCompletionTokens ?? 8192,
               onDelta
             });
           case 'openrouter':

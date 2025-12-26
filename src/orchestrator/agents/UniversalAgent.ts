@@ -15,7 +15,8 @@ export const universalAgent: Agent = {
     'delete_file',
     'file_exists',
     'execute_shell',
-    'search_code'
+    'search_code',
+    'fetch'
   ],
   temperature: 0.7,
   maxTokens: 16384

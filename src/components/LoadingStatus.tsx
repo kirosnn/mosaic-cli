@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import GlowingText from './GlowingText.js';
 
 interface LoadingStatusProps {
   theme: any;
   tokenCount: number;
+  terminalWidth?: number;
 }
 
-const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount }) => {
+const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount, terminalWidth }) => {
+  const { stdout } = useStdout();
+  const width = terminalWidth ?? stdout?.columns ?? 80;
   const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
@@ -52,17 +55,22 @@ const LoadingStatus: React.FC<LoadingStatusProps> = ({ theme, tokenCount }) => {
   const showTokens = tokenCount > 0;
 
   return (
-    <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
-      <Box>
-        <GlowingText text="Mosaic is thinking and planning" theme={theme} />
-        <Text color={theme.colors.text}>... </Text>
-        <Text bold color={theme.colors.secondary}>(esc</Text>
-        <Text color={theme.colors.secondary}>
-          {' '}
-          to interrupt
-          {showTokens ? ` - ${formatTokens(tokenCount)} tokens ↓` : ''}
-          {' '} - {formatElapsedTime(elapsedTime)})
-        </Text>
+    <Box flexDirection="column">
+      <Box width={width - 4}>
+        <Text color={theme.colors.secondary}>(</Text>
+        <GlowingText text="Mosaic is thinking and planning..." theme={theme} />
+        <Text color={theme.colors.secondary}> — </Text>
+        <Text bold italic color={theme.colors.secondary}>esc</Text>
+        <Text color={theme.colors.secondary}> to interrupt</Text>
+        {showTokens && (
+          <>
+            <Text color={theme.colors.secondary}> — </Text>
+            <Text color={theme.colors.secondary}>{formatTokens(tokenCount)} tokens</Text>
+          </>
+        )}
+        <Text color={theme.colors.secondary}> — </Text>
+        <Text color={theme.colors.secondary}>{formatElapsedTime(elapsedTime)}</Text>
+        <Text color={theme.colors.secondary}>)</Text>
       </Box>
     </Box>
   );

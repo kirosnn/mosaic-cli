@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { CONFIG_FILE, ensureMosaicDir } from './paths.js';
 import { getPackageVersion } from './version.js';
 import { ProviderType } from './providers.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 export interface SavedProvider {
   name: string;
@@ -46,7 +47,8 @@ export function loadConfig(): MosaicConfig {
     const data = readFileSync(CONFIG_FILE, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
-    console.error('Error reading config file, using defaults:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error reading config file, using defaults: ${details}`, 'error');
     return DEFAULT_CONFIG;
   }
 }
@@ -57,7 +59,8 @@ export function saveConfig(config: MosaicConfig): void {
   try {
     writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
   } catch (error) {
-    console.error('Error saving config file:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error saving config file: ${details}`, 'error');
     throw error;
   }
 }

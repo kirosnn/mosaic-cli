@@ -36,7 +36,8 @@ export const formatToolName = (toolName: string): string => {
     'file_exists': 'FileExists',
     'execute_shell': 'Bash',
     'search_code': 'Search',
-    'explore_workspace': 'Explore'
+    'explore_workspace': 'Explore',
+    'fetch': 'Fetch'
   };
 
   return nameMap[toolName] || toolName;
@@ -84,6 +85,13 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
           return `Found ${data.entries.length} items`;
         }
         break;
+      case 'file_exists':
+        if (data.exists !== undefined) {
+          return data.exists
+            ? `File exists: true`
+            : `File does not exist`;
+        }
+        break;
       case 'execute_shell':
         {
           const stdout = (data.stdout ?? '').trim();
@@ -103,6 +111,14 @@ export const formatToolResult = (toolName: string, result: any, parameters?: Rec
         if (data.count !== undefined) {
           return `Found ${data.count} matches`;
         }
+        break;
+      case 'fetch':
+        if (data.url) {
+          const statusInfo = data.status ? ` (${data.status})` : '';
+          const truncated = data.truncated ? ' [truncated]' : '';
+          return `Fetched${statusInfo}${truncated}`;
+        }
+        return 'Fetched URL';
         break;
     }
 
@@ -138,6 +154,16 @@ export const formatToolParameters = (toolName: string, parameters?: Record<strin
       return parameters.command || '';
     case 'search_code':
       return parameters.pattern || '';
+    case 'fetch':
+      if (parameters.url) {
+        try {
+          const url = new URL(parameters.url);
+          return url.hostname + url.pathname;
+        } catch {
+          return parameters.url.length > 50 ? parameters.url.substring(0, 47) + '...' : parameters.url;
+        }
+      }
+      return '';
     default:
       return '';
   }

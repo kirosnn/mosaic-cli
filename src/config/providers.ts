@@ -1,4 +1,5 @@
 import { getAllProvidersLatestModels, getModelCapabilitiesFromAPI, getModelDataFromFallback, isReasoningModelData } from '../utils/modelsFetcher.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 export type ProviderType = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'xai' | 'mistral' | 'custom';
 
@@ -115,7 +116,7 @@ export const PROVIDERS: Record<ProviderType, ProviderOption> = {
   },
   ollama: {
     type: 'ollama',
-    name: 'Ollama (Local)',
+    name: 'Ollama',
     defaultModels: [
       'gpt-oss:20b',
       'gpt-oss:120b',
@@ -206,7 +207,8 @@ export async function updateProvidersWithLatestModels(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Failed to update providers with latest models:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Failed to update providers with latest models: ${details}`, 'error');
   }
 }
 
@@ -248,7 +250,8 @@ export async function getModelCapabilitiesFromProvider(provider: ProviderType, m
       };
     }
   } catch (error) {
-    console.error(`Failed to fetch capabilities for ${model}:`, error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Failed to fetch capabilities for ${model}: ${details}`, 'error');
   }
 
   return getModelCapabilities(provider, model);

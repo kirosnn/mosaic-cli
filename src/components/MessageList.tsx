@@ -45,6 +45,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                           isStreaming={isStreaming && index === streamingMessageIndex}
                         />
                       </Box>
+                      {msg.interrupted && (
+                        <Box paddingLeft={2} marginTop={1}>
+                          <Text color={theme.colors.accent} italic>Interrupted by user</Text>
+                        </Box>
+                      )}
                       {allTools.length > 0 && (
                         <Box marginTop={1} paddingLeft={2} flexDirection="column">
                           <ToolExecutionList tools={allTools} theme={theme} />
@@ -114,6 +119,14 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme, isStreaming 
                   segments.push(
                     <Box key={`tools-unanchored-${index}`} paddingLeft={2} marginTop={1} flexDirection="column">
                       <ToolExecutionList tools={unanchored as any} theme={theme} />
+                    </Box>
+                  );
+                }
+
+                if (msg.interrupted) {
+                  segments.push(
+                    <Box key={`interrupted-${index}`} paddingLeft={2} marginTop={1}>
+                      <Text color={theme.colors.accent} italic>Interrupted by user</Text>
                     </Box>
                   );
                 }

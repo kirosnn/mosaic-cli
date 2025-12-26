@@ -5,7 +5,7 @@
     "openrouter": "OpenRouter",
     "xai": "xAI",
     "mistral": "Mistral AI",
-    "ollama": "Ollama (Local)",
+    "ollama": "Ollama",
     "custom": "Custom Provider"
   },
   "models": {

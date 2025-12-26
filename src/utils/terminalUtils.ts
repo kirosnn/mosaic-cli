@@ -8,9 +8,7 @@ export function clearTerminal(): void {
   }
 
   process.stdout.write('\x1b[2J');
-  process.stdout.write('\x1b[3J');
   process.stdout.write('\x1b[H');
-  process.stdout.write('\x1bc');
 }
 
 export function extractTitleFromResponse(content: string): string | null {

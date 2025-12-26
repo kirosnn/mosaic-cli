@@ -33,6 +33,9 @@ export async function sendToAnthropic(params: {
   const systemMessages = messages.filter(m => m.role === 'system');
   const conversationMessages = messages.filter(m => m.role !== 'system');
 
+  const MAX_ANTHROPIC_OUTPUT_TOKENS = 64000;
+  const safeMaxTokens = Math.max(1, Math.min(maxTokens, MAX_ANTHROPIC_OUTPUT_TOKENS));
+
   let response: Response;
   try {
     response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -44,7 +47,7 @@ export async function sendToAnthropic(params: {
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: maxTokens,
+        max_tokens: safeMaxTokens,
         system: systemMessages.length > 0 ? systemMessages[0].content : undefined,
         messages: conversationMessages,
         ...(isReasoningModel && {

@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { platform } from 'os';
 import { AIError, AIErrorType } from './errors.js';
 import type { Message } from './aiProvider.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 const execAsync = promisify(exec);
 
@@ -61,7 +62,8 @@ export class OllamaClient {
     try {
       await execAsync(command);
     } catch (error) {
-      console.error('Failed to open browser:', error);
+      const details = error instanceof Error ? error.stack || error.message : String(error);
+      verboseLogger.logMessage(`Failed to open browser: ${details}`, 'error');
     }
   }
 
@@ -95,7 +97,8 @@ export class OllamaClient {
 
       return false;
     } catch (error) {
-      console.error('Failed to start Ollama:', error);
+      const details = error instanceof Error ? error.stack || error.message : String(error);
+      verboseLogger.logMessage(`Failed to start Ollama: ${details}`, 'error');
       return false;
     }
   }
@@ -113,10 +116,10 @@ export class OllamaClient {
     this.authenticationInProgress = true;
 
     try {
-      console.log('\nOpening browser for Ollama authentication...');
+      verboseLogger.logMessage('\nOpening browser for Ollama authentication...', 'info');
       await this.openUrl(signinUrl);
 
-      console.log('Waiting for authentication to complete...');
+      verboseLogger.logMessage('Waiting for authentication to complete...', 'info');
 
       for (let i = 0; i < 60; i++) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -124,7 +127,7 @@ export class OllamaClient {
         try {
           await this.client.list();
           this.connectionVerified = true;
-          console.log('Authentication successful!');
+          verboseLogger.logMessage('Authentication successful!', 'success');
           this.authenticationInProgress = false;
           return;
         } catch (error: any) {
@@ -179,7 +182,7 @@ export class OllamaClient {
         message.toLowerCase().includes('connection refused') ||
         message.toLowerCase().includes('fetch failed')) {
 
-        console.log('Ollama is not running. Attempting to start...');
+        verboseLogger.logMessage('Ollama is not running. Attempting to start...', 'warning');
         const started = await this.startOllama();
 
         if (started) {
@@ -277,7 +280,7 @@ export class OllamaClient {
   async ensureModelExists(modelName: string, onProgress?: (progress: PullProgress) => void): Promise<void> {
     const exists = await this.checkModelExists(modelName);
     if (!exists) {
-      console.log(`Downloading model "${modelName}"...`);
+      verboseLogger.logMessage(`Downloading model "${modelName}"...`, 'info');
       await this.pullModel(modelName, onProgress);
     }
   }

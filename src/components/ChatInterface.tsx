@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { loadConfig, getPackageVersion, getTheme, getThemeNames, updateConfig, getModelHistory, addToModelHistory } from '../config/index.js';
+
 import * as path from 'path';
 import { shortcuts, commands } from '../config/shortcuts.js';
-import { getProviderTypes, PROVIDERS, getProviderOption } from '../config/providers.js';
+import { getProviderTypes, PROVIDERS, getProviderOption, ProviderType } from '../config/providers.js';
+import { extractFileReferences, resolveFileReferences, removeFileReferences, formatReferencesForContext } from '../utils/contextReferences.js';
+
 import { Orchestrator, universalAgent, allTools } from '../orchestrator/index.js';
 import { ToolExecution, MessageWithTools } from '../types/toolExecution.js';
 import { formatToolName, formatToolResult } from '../utils/toolFormatters.js';
@@ -19,13 +22,17 @@ import LoadingStatus from './LoadingStatus.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useToolApproval } from '../hooks/useToolApproval.js';
 import { historyService } from '../services/historyService.js';
-import { VerboseLogger } from '../utils/VerboseLogger.js';
+import { verboseLogger as globalVerboseLogger } from '../utils/VerboseLogger.js';
 import { extractTitleFromResponse, removeTitleFromContent, setTerminalTitle } from '../utils/terminalUtils.js';
 import { MOSAIC_INIT_PROMPT, getMosaicFilePath } from '../utils/mosaicContext.js';
-import { rewindService, FileSnapshot } from '../services/rewindService.js';
-import RewindSelector from './RewindSelector.js';
+import { undoRedoService, FileSnapshot } from '../services/undoRedoService.js';
+import UndoSelector from './UndoSelector.js';
+import IdeSelector from './IdeSelector.js';
+import { ideService } from '../services/ideIntegration/ideService.js';
+import { IDEInstance } from '../services/ideIntegration/types.js';
 import * as fs from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
+import { setSecret, hasSecret } from '../config/secrets.js';
 
 const version = getPackageVersion();
 
@@ -43,7 +50,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [showModelSelector, setShowModelSelector] = useState(false);
-  const [showRewindSelector, setShowRewindSelector] = useState(false);
+  const [showUndoSelector, setShowUndoSelector] = useState(false);
+  const [showIdeSelector, setShowIdeSelector] = useState(false);
+  const [detectedIDEs, setDetectedIDEs] = useState<IDEInstance[]>([]);
+  const [showApiKeyProviderSelector, setShowApiKeyProviderSelector] = useState(false);
   const [customModelInput, setCustomModelInput] = useState('');
   const [isAddingCustomModel, setIsAddingCustomModel] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -58,14 +68,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
   const [verboseMode, setVerboseMode] = useState<boolean>(initialVerboseMode);
   const [tokenCount, setTokenCount] = useState<number>(0);
   const executingCommand = useRef(false);
-  const verboseLogger = useRef(new VerboseLogger(initialVerboseMode));
+  const verboseLogger = useRef(globalVerboseLogger);
   const streamingIndex = useRef<number | null>(null);
   const isStreaming = useRef<boolean>(false);
+  const [isStreamingState, setIsStreamingState] = useState<boolean>(false);
+  const shouldStopStreaming = useRef<boolean>(false);
   const iterationCount = useRef<number>(0);
   const executionStartTime = useRef<number | null>(null);
   const executedTools = useRef<any[]>([]);
   const currentResponse = useRef<string>('');
   const currentTokenCount = useRef<number>(0);
+  const [showProviderApiKeyPrompt, setShowProviderApiKeyPrompt] = useState(false);
+  const [providerPendingApiKey, setProviderPendingApiKey] = useState<ProviderType | null>(null);
+  const [providerPendingModel, setProviderPendingModel] = useState<string | null>(null);
+  const [providerApiKeyInput, setProviderApiKeyInput] = useState('');
+  const [apiKeyProviderForEdit, setApiKeyProviderForEdit] = useState<ProviderType | null>(null);
 
   const { pendingApproval, wrapToolExecution } = useToolApproval({
     onToolStart: (tool) => {
@@ -157,7 +174,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     if (!currentProvider) return null;
 
     const orch = new Orchestrator(currentProvider, {
-      maxIterations: 10,
+      maxIterations: 30,
       enableToolChaining: true,
       toolTimeout: 30000,
       defaultAgent: 'universal_agent'
@@ -169,8 +186,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     orch.on((event) => {
       verboseLogger.current.log(event);
 
+      if (shouldStopStreaming.current) {
+        return;
+      }
+
       if (event.type === 'ai_stream_start') {
         isStreaming.current = true;
+        setIsStreamingState(true);
         if (streamingIndex.current === null) {
           iterationCount.current = 0;
           currentResponse.current = '';
@@ -181,16 +203,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
           });
         } else {
           iterationCount.current += 1;
+          const separator = '\n\n';
+          currentResponse.current = currentResponse.current + separator;
+
           setMessages(prev => {
             const updated = [...prev];
             const idx = streamingIndex.current!;
             if (updated[idx] && updated[idx].role === 'assistant') {
               const msg = updated[idx] as MessageWithTools;
-              const separator = iterationCount.current > 0 && msg.content ? '\n\n' : '';
-              currentResponse.current = msg.content + separator;
+              const cleanedContent = removeTitleFromContent(currentResponse.current);
               updated[idx] = {
                 role: 'assistant',
-                content: msg.content + separator,
+                content: cleanedContent,
                 toolExecutions: msg.toolExecutions
               };
             }
@@ -203,21 +227,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         if (streamingIndex.current === null) {
           return;
         }
+
+        currentResponse.current = currentResponse.current + delta;
+
+        const title = extractTitleFromResponse(currentResponse.current);
+        if (title) {
+          setTerminalTitle(`✹ ${title}`);
+        }
+
+        const cleanedContent = removeTitleFromContent(currentResponse.current);
+
         setMessages(prev => {
           const updated = [...prev];
           const idx = streamingIndex.current!;
           const msg = updated[idx] as MessageWithTools;
           if (msg && msg.role === 'assistant') {
-            const newContent = (msg.content || '') + delta;
-
-            const title = extractTitleFromResponse(newContent);
-            if (title) {
-              setTerminalTitle(`✹ ${title}`);
-            }
-
-            const cleanedContent = removeTitleFromContent(newContent);
-            currentResponse.current = cleanedContent;
-
             updated[idx] = {
               ...msg,
               content: cleanedContent,
@@ -242,19 +266,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         });
 
         if (streamingIndex.current !== null) {
+          const cleanedContentLength = removeTitleFromContent(currentResponse.current).length;
+
           setMessages(prev => {
             const updated = [...prev];
             const idx = streamingIndex.current!;
             const msg = updated[idx] as MessageWithTools;
             if (msg && msg.role === 'assistant') {
               const toolExecutions = msg.toolExecutions || [];
-              const currentContentLength = (msg.content || '').length;
               const newTool = {
                 name: toolName,
                 displayName: formatToolName(toolName),
                 status: 'running' as const,
                 parameters: event.data?.parameters,
-                insertAt: currentContentLength
+                insertAt: cleanedContentLength
               };
               updated[idx] = {
                 ...msg,
@@ -293,10 +318,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
                 const result = event.type === 'tool_success'
                   ? formatToolResult(tool.name, event.data?.result, tool.parameters)
                   : (event.data?.error ? String(event.data.error).substring(0, 100) : undefined);
+                const diffLines = event.type === 'tool_success' && event.data?.result?.diffLines
+                  ? event.data.result.diffLines
+                  : undefined;
                 toolExecutions[toolIndex] = {
                   ...tool,
                   status: event.type === 'tool_success' ? 'completed' : 'error',
-                  result
+                  result,
+                  diffLines
                 };
                 updated[idx] = {
                   ...msg,
@@ -309,34 +338,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         }
       } else if (event.type === 'ai_stream_complete') {
         if (streamingIndex.current !== null && event.data?.content) {
+          const finalContent = event.data.content;
+
+          const title = extractTitleFromResponse(finalContent);
+          if (title) {
+            setTerminalTitle(`✹ ${title}`);
+          }
+
+          const cleanedContent = removeTitleFromContent(finalContent);
+          currentResponse.current = cleanedContent;
+
           setMessages(prev => {
             const updated = [...prev];
             const idx = streamingIndex.current!;
             const msg = updated[idx] as MessageWithTools;
             if (msg && msg.role === 'assistant') {
-              const finalContent = event.data.content;
-
-              const title = extractTitleFromResponse(finalContent);
-              if (title) {
-                setTerminalTitle(`✹ ${title}`);
+              if (msg.content !== cleanedContent) {
+                updated[idx] = {
+                  ...msg,
+                  content: cleanedContent,
+                  toolExecutions: msg.toolExecutions
+                } as MessageWithTools;
               }
-
-              const cleanedContent = removeTitleFromContent(finalContent);
-              currentResponse.current = cleanedContent;
-
-              updated[idx] = {
-                ...msg,
-                content: cleanedContent,
-                toolExecutions: msg.toolExecutions
-              } as MessageWithTools;
             }
             return updated;
           });
         }
       } else if (event.type === 'ai_stream_error') {
         isStreaming.current = false;
+        setIsStreamingState(false);
       } else if (event.type === 'final_response') {
         isStreaming.current = false;
+        setIsStreamingState(false);
       } else if (event.type === 'token_usage') {
         const source = event.data?.source;
         const tokens = typeof event.data?.tokens === 'number' ? event.data.tokens : 0;
@@ -482,14 +515,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
 
       toolRegistry.execute = wrapToolExecution(trackingWrapper, executedToolsForApproval);
 
-      await orchestrator.executeTaskWithPlanning(MOSAIC_INIT_PROMPT);
+      await orchestrator.executeTask(MOSAIC_INIT_PROMPT);
 
       toolRegistry.execute = originalExecute;
       setCurrentToolExecutions([]);
 
       if (filesModified.length > 0) {
         const currentMessageIndex = messages.length - 1;
-        rewindService.createSnapshot(currentMessageIndex, '/init', filesModified);
+        undoRedoService.createSnapshot(currentMessageIndex, '/init', filesModified);
       }
 
       let finalMessage = '';
@@ -562,6 +595,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       setIsLoading(false);
       streamingIndex.current = null;
       isStreaming.current = false;
+      setIsStreamingState(false);
+      shouldStopStreaming.current = false;
       iterationCount.current = 0;
       executionStartTime.current = null;
       executedTools.current = [];
@@ -582,6 +617,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     } else if (action === 'model') {
       setShowModelSelector(true);
       setSelectedIndex(0);
+    } else if (action === 'apikey') {
+      setShowApiKeyProviderSelector(true);
+      setSelectedIndex(0);
     } else if (action === 'verbose') {
       const newVerboseMode = !verboseMode;
       setVerboseMode(newVerboseMode);
@@ -596,9 +634,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       setTimeout(() => {
         executeInitCommand();
       }, 100);
-    } else if (action === 'rewind') {
-      setShowRewindSelector(true);
+    } else if (action === 'undo') {
+      setShowUndoSelector(true);
       setSelectedIndex(0);
+    } else if (action === 'redo') {
+      handleRedo();
+    } else if (action === 'ide') {
+      setTimeout(async () => {
+        const instances = await ideService.detectIDEs(true);
+        setDetectedIDEs(instances);
+
+        if (instances.length === 0) {
+          const statusMessage: MessageWithTools = {
+            role: 'assistant',
+            content: 'No running IDEs detected. Please open VSCode, Cursor, or Windsurf.'
+          };
+          setMessages([...messages, statusMessage]);
+        } else {
+          setShowIdeSelector(true);
+          setSelectedIndex(0);
+        }
+      }, 100);
     }
 
     setTimeout(() => {
@@ -614,12 +670,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
   };
 
   const handleProviderSelection = (providerType: string) => {
-    const providerOption = getProviderOption(providerType as any);
+    const providerKey = providerType as ProviderType;
+    const providerOption = getProviderOption(providerKey);
+
     const currentConfig = loadConfig();
     const defaultModel = providerOption.defaultModels[0] || '';
 
+    const needsApiKey = providerOption.requiresApiKey;
+    const secretKeyName = `${providerKey}_api_key`;
+
+    if (!showApiKeyProviderSelector && needsApiKey && !hasSecret(secretKeyName)) {
+      setShowProviderSelector(false);
+      setSelectedIndex(0);
+
+      setProviderPendingApiKey(providerKey);
+      setProviderPendingModel(defaultModel);
+
+      const infoMessage: MessageWithTools = {
+        role: 'assistant',
+        content: `No API key configured for ${providerOption.name}. Please enter your API key to use this provider.`
+      };
+      setMessages([...messages, infoMessage]);
+
+      setShowProviderApiKeyPrompt(true);
+      return;
+    }
+
     const newProvider = {
-      type: providerType as any,
+      type: providerKey,
       model: defaultModel,
       baseUrl: currentConfig.provider?.baseUrl
     };
@@ -690,19 +768,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     setSelectedIndex(0);
   };
 
-  const handleRewindSelection = async (messageIndex: number) => {
-    setShowRewindSelector(false);
+  const handleApiKeyProviderSelection = (providerType: string) => {
+    const providerKey = providerType as ProviderType;
+    setApiKeyProviderForEdit(providerKey);
+    setProviderApiKeyInput('');
+
+    const providerOption = getProviderOption(providerKey);
+    const hasExisting = hasSecret(`${providerKey}_api_key`);
+
+    const infoMessage: MessageWithTools = {
+      role: 'assistant',
+      content: hasExisting
+        ? `Updating API key for ${providerOption.name}. Enter a new key to replace the existing one.`
+        : `No API key configured for ${providerOption.name}. Please enter your API key.`,
+    };
+    setMessages([...messages, infoMessage]);
+
+    setShowApiKeyProviderSelector(false);
+    setShowProviderApiKeyPrompt(true);
+  };
+
+  const handleUndoSelection = async (messageIndex: number) => {
+    setShowUndoSelector(false);
     setSelectedIndex(0);
     setIsLoading(true);
 
+    const targetMessage = messages[messageIndex];
+    const userInput = targetMessage?.role === 'user' ? targetMessage.content : '';
+
     const statusMessage: MessageWithTools = {
       role: 'assistant',
-      content: 'Rewinding conversation and restoring files...'
+      content: 'Undoing conversation and restoring files...'
     };
     setMessages(prev => [...prev, statusMessage]);
 
     try {
-      const { filesRestored, errors } = await rewindService.restoreToSnapshot(messageIndex);
+      const { filesRestored, errors } = await undoRedoService.restoreToSnapshot(messageIndex, messages.length);
 
       setMessages(prev => prev.slice(0, messageIndex + 1));
 
@@ -710,9 +811,109 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         orchestrator.resetContext();
       }
 
-      let resultContent = `Rewind complete.\n\n`;
+      let resultContent = `Undo complete.\n\n`;
       if (filesRestored.length > 0) {
-        resultContent += `Files restored: ${filesRestored.length}\n`;
+        resultContent += `Files restored:\n`;
+        filesRestored.forEach(file => {
+          resultContent += `  - ${file}\n`;
+        });
+      } else {
+        resultContent += 'No files needed restoration.\n';
+      }
+
+      if (errors.length > 0) {
+        resultContent += `\nErrors encountered:\n`;
+        errors.forEach(error => {
+          resultContent += `  - ${error}\n`;
+        });
+      }
+
+      const resultMessage: MessageWithTools = {
+        role: 'assistant',
+        content: resultContent
+      };
+
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = resultMessage;
+        return updated;
+      });
+
+      if (userInput) {
+        setInput(userInput);
+      }
+
+    } catch (error) {
+      const errorMessage: MessageWithTools = {
+        role: 'assistant',
+        content: `Error during undo: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = errorMessage;
+        return updated;
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleIdeSelection = (index: number) => {
+    const selectedIde = detectedIDEs[index];
+    if (!selectedIde) return;
+
+    ideService.selectIDE(selectedIde);
+
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: `IDE selected: ${selectedIde.name}${selectedIde.workspacePath ? ` (${selectedIde.workspacePath})` : ''}\n\nYou can now use the following actions:\n  - Open files in the IDE\n  - Focus the IDE window\n  - View workspace information`
+    };
+    setMessages([...messages, statusMessage]);
+
+    setShowIdeSelector(false);
+    setSelectedIndex(0);
+  };
+
+  const handleRedo = async () => {
+    if (!undoRedoService.canRedo()) {
+      const warningMessage: MessageWithTools = {
+        role: 'assistant',
+        content: 'Nothing to redo.'
+      };
+      setMessages([...messages, warningMessage]);
+      return;
+    }
+
+    setIsLoading(true);
+
+    const statusMessage: MessageWithTools = {
+      role: 'assistant',
+      content: 'Redoing changes...'
+    };
+    setMessages(prev => [...prev, statusMessage]);
+
+    try {
+      const result = await undoRedoService.redo();
+
+      if (!result) {
+        const errorMessage: MessageWithTools = {
+          role: 'assistant',
+          content: 'Nothing to redo.'
+        };
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = errorMessage;
+          return updated;
+        });
+        return;
+      }
+
+      const { filesRestored, errors } = result;
+
+      let resultContent = `Redo complete.\n\n`;
+      if (filesRestored.length > 0) {
+        resultContent += `Files restored:\n`;
         filesRestored.forEach(file => {
           resultContent += `  - ${file}\n`;
         });
@@ -741,7 +942,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     } catch (error) {
       const errorMessage: MessageWithTools = {
         role: 'assistant',
-        content: `Error during rewind: ${error instanceof Error ? error.message : 'Unknown error'}`
+        content: `Error during redo: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
 
       setMessages(prev => {
@@ -787,6 +988,76 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     setCustomModelInput('');
   };
 
+  const handleProviderApiKeySubmit = () => {
+    const targetProvider = apiKeyProviderForEdit || providerPendingApiKey;
+
+    if (!targetProvider) {
+      setShowProviderApiKeyPrompt(false);
+      setProviderApiKeyInput('');
+      setApiKeyProviderForEdit(null);
+      setProviderPendingApiKey(null);
+      setProviderPendingModel(null);
+      return;
+    }
+
+    const trimmed = providerApiKeyInput.trim();
+    const providerOption = getProviderOption(targetProvider);
+
+    if (!trimmed) {
+      const warningMessage: MessageWithTools = {
+        role: 'assistant',
+        content: apiKeyProviderForEdit
+          ? `No API key entered. Provider ${providerOption.name} API key was not changed.`
+          : `No API key entered. Provider ${providerOption.name} was not changed.`,
+      };
+
+      setMessages([...messages, warningMessage]);
+
+      setShowProviderApiKeyPrompt(false);
+      setApiKeyProviderForEdit(null);
+      setProviderPendingApiKey(null);
+      setProviderPendingModel(null);
+      setProviderApiKeyInput('');
+      return;
+    }
+
+    setSecret(`${targetProvider}_api_key`, trimmed);
+
+    // If we came from /provider (no apiKeyProviderForEdit), also switch provider now
+    if (!apiKeyProviderForEdit && providerPendingModel) {
+      const currentConfig = loadConfig();
+      const newProvider = {
+        type: targetProvider,
+        model: providerPendingModel,
+        baseUrl: currentConfig.provider?.baseUrl
+      };
+
+      updateConfig({
+        provider: newProvider
+      });
+
+      setCurrentProvider(newProvider);
+
+      const statusMessage: MessageWithTools = {
+        role: 'assistant',
+        content: `Provider changed to ${providerOption.name} with model ${providerPendingModel}. API key saved. Orchestrator reloaded.`
+      };
+      setMessages([...messages, statusMessage]);
+    } else {
+      const statusMessage: MessageWithTools = {
+        role: 'assistant',
+        content: `API key for ${providerOption.name} has been saved.`
+      };
+      setMessages([...messages, statusMessage]);
+    }
+
+    setShowProviderApiKeyPrompt(false);
+    setApiKeyProviderForEdit(null);
+    setProviderPendingApiKey(null);
+    setProviderPendingModel(null);
+    setProviderApiKeyInput('');
+  };
+
   const handleShortcutExecution = (action: string) => {
     if (action === 'clear') {
       setMessages([]);
@@ -808,11 +1079,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     }
   });
 
+  useInput((inputChar, key) => {
+    if (!showProviderApiKeyPrompt) return;
+
+    if (key.escape) {
+      setShowProviderApiKeyPrompt(false);
+      setApiKeyProviderForEdit(null);
+      setProviderPendingApiKey(null);
+      setProviderPendingModel(null);
+      setProviderApiKeyInput('');
+    }
+  });
+
   const userMessages = useMemo(() => {
     return messages
       .map((msg, index) => ({ msg, originalIndex: index }))
       .filter(item => item.msg.role === 'user');
   }, [messages]);
+
+  const activeApiKeyProvider = apiKeyProviderForEdit ?? providerPendingApiKey;
 
   const { resetExitState } = useKeyboardShortcuts({
     input,
@@ -821,7 +1106,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     showThemeSelector,
     showProviderSelector,
     showModelSelector,
-    showRewindSelector,
+    showUndoSelector,
+    showIdeSelector,
+    showApiKeyProviderSelector,
     selectedIndex,
     shortcuts,
     commands,
@@ -831,13 +1118,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     providerNames,
     availableModels,
     userMessages,
+    detectedIDEs,
+    isStreaming: isStreamingState,
     onClearMessages: () => {
       setMessages([]);
       setTokenCount(0);
       if (orchestrator) {
         orchestrator.resetContext();
       }
-      rewindService.clearSnapshots();
+      undoRedoService.clearSnapshots();
     },
     onClearInput: () => setInput(''),
     onShowShortcuts: setShowShortcuts,
@@ -845,16 +1134,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
     onShowThemeSelector: setShowThemeSelector,
     onShowProviderSelector: setShowProviderSelector,
     onShowModelSelector: setShowModelSelector,
-    onShowRewindSelector: setShowRewindSelector,
+    onShowUndoSelector: setShowUndoSelector,
+    onShowIdeSelector: setShowIdeSelector,
+    onShowApiKeyProviderSelector: setShowApiKeyProviderSelector,
     onSelectIndex: setSelectedIndex,
     onSelectItem: setInput,
     onShowCtrlCMessage: setShowCtrlCMessage,
+    onStopStreaming: () => {
+      shouldStopStreaming.current = true;
+      isStreaming.current = false;
+      setIsStreamingState(false);
+      if (streamingIndex.current !== null) {
+        setMessages(prev => {
+          const updated = [...prev];
+          const idx = streamingIndex.current!;
+          const msg = updated[idx] as MessageWithTools;
+
+          if (msg && msg.role === 'assistant') {
+            updated[idx] = {
+              ...msg,
+              interrupted: true
+            } as MessageWithTools;
+          }
+
+          return updated;
+        });
+      }
+
+      setIsLoading(false);
+      setCurrentToolExecutions([]);
+    },
     onExecuteCommand: handleCommandExecution,
     onExecuteShortcut: handleShortcutExecution,
     onSelectTheme: handleThemeSelection,
     onSelectProvider: handleProviderSelection,
     onSelectModel: handleModelSelection,
-    onSelectRewind: handleRewindSelection
+    onSelectUndo: handleUndoSelection,
+    onSelectIde: handleIdeSelection,
+    onSelectApiKeyProvider: handleApiKeyProviderSelection
   });
 
   const handleSubmit = async (value: string) => {
@@ -878,6 +1195,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         }
       }
 
+      const fileReferences = extractFileReferences(trimmedValue);
+      let messageContent = trimmedValue;
+      let contextAddition = '';
+
+      if (fileReferences.length > 0) {
+        const workingDir = process.cwd();
+        const resolvedRefs = await resolveFileReferences(fileReferences, workingDir);
+        contextAddition = formatReferencesForContext(resolvedRefs);
+        messageContent = removeFileReferences(trimmedValue);
+      }
+
+      const finalMessage = messageContent + contextAddition;
+
       executionStartTime.current = Date.now();
       executedTools.current = [];
       currentResponse.current = '';
@@ -885,7 +1215,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       setTokenCount(0);
 
       historyService.addEntry({
-        message: trimmedValue,
+        message: messageContent,
         timestamp: executionStartTime.current,
         provider: currentProvider ? {
           type: currentProvider.type,
@@ -895,10 +1225,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
       });
       setHistoryIndex(-1);
 
-      const userMessage: MessageWithTools = { role: 'user', content: trimmedValue };
+      const userMessage: MessageWithTools = { role: 'user', content: messageContent };
       setMessages(prev => [...prev, userMessage]);
 
       setIsLoading(true);
+      shouldStopStreaming.current = false;
       setInput('');
       resetExitState();
 
@@ -951,7 +1282,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
 
         toolRegistry.execute = wrapToolExecution(trackingWrapper, executedToolsForApproval);
 
-        const result = await orchestrator.executeTaskWithPlanning(value.trim());
+        const result = await orchestrator.executeTaskWithPlanning(finalMessage);
 
         toolRegistry.execute = originalExecute;
 
@@ -959,7 +1290,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
 
         if (filesModified.length > 0) {
           const currentMessageIndex = messages.length;
-          rewindService.createSnapshot(currentMessageIndex, trimmedValue, filesModified);
+          undoRedoService.createSnapshot(currentMessageIndex, messageContent, filesModified);
         }
 
         const duration = executionStartTime.current ? Date.now() - executionStartTime.current : 0;
@@ -1014,6 +1345,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         setIsLoading(false);
         streamingIndex.current = null;
         isStreaming.current = false;
+        setIsStreamingState(false);
         iterationCount.current = 0;
         executionStartTime.current = null;
         executedTools.current = [];
@@ -1107,8 +1439,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
             terminalWidth={terminalWidth}
             onApprove={pendingApproval.onApprove}
             onReject={pendingApproval.onReject}
-            onApproveAll={pendingApproval.onApproveAll || (() => {})}
-            onModify={pendingApproval.onModify || (() => {})}
+            onApproveAll={pendingApproval.onApproveAll || (() => { })}
+            onModify={pendingApproval.onModify || (() => { })}
           />
         )}
 
@@ -1117,13 +1449,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         )}
       </Box>
 
-      {!pendingApproval && !isAddingCustomModel && (
+      {!pendingApproval && !isAddingCustomModel && !showProviderApiKeyPrompt && (
         <ChatInput
           input={input}
           terminalWidth={terminalWidth}
           helpText={helpText}
           theme={theme}
-          isMenuOpen={showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showRewindSelector}
+          isMenuOpen={showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showUndoSelector || showIdeSelector || showApiKeyProviderSelector}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
           onHistoryNavigation={handleHistoryNavigation}
@@ -1146,7 +1478,37 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
             />
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>Press Enter to confirm, Esc to cancel</Text>
+            <Text dimColor>Press Enter to confirm — esc to cancel</Text>
+          </Box>
+        </Box>
+      )}
+
+      {showProviderApiKeyPrompt && activeApiKeyProvider && (
+        <Box flexDirection="column" paddingX={1} paddingY={1}>
+          <Box marginBottom={1}>
+            <Text color={theme.colors.text}>
+              Enter API key for {PROVIDERS[activeApiKeyProvider].name}:
+            </Text>
+          </Box>
+          <Box marginLeft={2} flexDirection="column">
+            <Box marginBottom={1}>
+              <Text color={theme.colors.text}>
+                Your API key will be securely stored in .mosaic/.secrets.json
+              </Text>
+            </Box>
+            <Box>
+              <Text color={theme.colors.primary}>API Key: </Text>
+              <CustomTextInput
+                value={providerApiKeyInput}
+                onChange={setProviderApiKeyInput}
+                onSubmit={handleProviderApiKeySubmit}
+                mask="*"
+                focus={true}
+              />
+            </Box>
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Press Enter to confirm — esc to cancel</Text>
           </Box>
         </Box>
       )}
@@ -1187,6 +1549,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         />
       )}
 
+      {showApiKeyProviderSelector && (
+        <DropdownMenu
+          items={providerNames.map(p => ({ key: p.type, description: p.name }))}
+          selectedIndex={selectedIndex}
+          theme={theme}
+          title="Select Provider for API key"
+        />
+      )}
+
       {showModelSelector && (
         <DropdownMenu
           items={availableModels}
@@ -1196,9 +1567,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialVerboseMode = fals
         />
       )}
 
-      {showRewindSelector && (
-        <RewindSelector
+      {showUndoSelector && (
+        <UndoSelector
           messages={messages}
+          selectedIndex={selectedIndex}
+          theme={theme}
+        />
+      )}
+
+      {showIdeSelector && (
+        <IdeSelector
+          instances={detectedIDEs}
           selectedIndex={selectedIndex}
           theme={theme}
         />

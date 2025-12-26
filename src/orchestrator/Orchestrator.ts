@@ -18,6 +18,7 @@ import { TaskPlanner, ExecutionPlan } from './planning/TaskPlanner.js';
 import { buildOrchestratorSystemPrompt } from '../config/systemPrompt.js';
 import { filterToolCallsFromText } from '../utils/streamFilter.js';
 import { createPathValidator } from './tools/pathValidator.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 export class Orchestrator {
   private agents: Map<string, Agent> = new Map();
@@ -48,7 +49,7 @@ export class Orchestrator {
     this.taskPlanner = new TaskPlanner(this.aiProvider, reportTokenUsage);
 
     this.config = {
-      maxIterations: config.maxIterations ?? 10,
+      maxIterations: config.maxIterations ?? 30,
       enableToolChaining: config.enableToolChaining ?? true,
       toolTimeout: config.toolTimeout ?? 30000,
       defaultAgent: config.defaultAgent
@@ -110,7 +111,8 @@ export class Orchestrator {
       try {
         listener(event);
       } catch (error) {
-        console.error('[Orchestrator] Error in event listener:', error);
+        const details = error instanceof Error ? error.stack || error.message : String(error);
+        verboseLogger.logMessage(`[Orchestrator] Error in event listener: ${details}`, 'error');
       }
     }
   }
@@ -214,24 +216,13 @@ export class Orchestrator {
           lastStreamedLength = fullFiltered.length;
         }
       });
-      if (!aiResponse.error) {
-        const filteredContent = filterToolCallsFromText(accumulated);
-        if (filteredContent && filteredContent.length > 0) {
-          this.emit({
-            type: 'ai_stream_complete',
-            timestamp: new Date(),
-            data: { content: filteredContent }
-          });
-        }
-      } else {
+
+      if (aiResponse.error) {
         this.emit({
           type: 'ai_stream_error',
           timestamp: new Date(),
           data: { error: aiResponse.error }
         });
-      }
-
-      if (aiResponse.error) {
         this.emit({
           type: 'error',
           timestamp: new Date(),
@@ -241,6 +232,17 @@ export class Orchestrator {
       }
 
       const finalContent = aiResponse.content || accumulated;
+
+      if (!aiResponse.error && accumulated) {
+        const filteredAccumulated = filterToolCallsFromText(accumulated);
+        if (filteredAccumulated && filteredAccumulated.length > 0) {
+          this.emit({
+            type: 'ai_stream_complete',
+            timestamp: new Date(),
+            data: { content: filteredAccumulated }
+          });
+        }
+      }
       this.emit({
         type: 'ai_response',
         timestamp: new Date(),
@@ -355,16 +357,32 @@ export class Orchestrator {
       content: systemPrompt
     });
 
+    const providerType = this.aiProvider.getConfig().type;
+    const keepToolRole = providerType === 'ollama';
+
     for (const msg of this.state.context.conversationHistory) {
       if (msg.role === 'tool') {
         messages.push({
-          role: 'user',
+          role: keepToolRole ? 'tool' : 'user',
           content: this.enrichToolResultMessage(msg)
         });
       } else {
         messages.push({
           role: msg.role,
           content: msg.content
+        });
+      }
+    }
+
+    if (keepToolRole && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      verboseLogger.logMessage(`[Orchestrator] Last message role before sending to Ollama: ${lastMessage.role}`, 'info');
+
+      if (lastMessage.role === 'assistant') {
+        verboseLogger.logMessage('[Orchestrator] WARNING: Last message is assistant, adding continuation prompt for Ollama', 'warning');
+        messages.push({
+          role: 'user',
+          content: 'Continue with your analysis and provide a complete response based on the tool results above.'
         });
       }
     }
@@ -412,9 +430,57 @@ export class Orchestrator {
     try {
       let jsonContent = response;
 
-      const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlockMatch) {
-        jsonContent = codeBlockMatch[1].trim();
+      const jsonBlockStart = response.search(/```(?:json)?\s*[\[\{]/);
+      if (jsonBlockStart !== -1) {
+        const contentStart = response.indexOf('\n', jsonBlockStart);
+        if (contentStart !== -1) {
+          let depth = 0;
+          let inString = false;
+          let escapeNext = false;
+          let endPos = -1;
+
+          for (let i = contentStart + 1; i < response.length - 2; i++) {
+            const char = response[i];
+            const next3 = response.slice(i, i + 3);
+
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (next3 === '```') {
+                endPos = i;
+                break;
+              }
+              if (char === '{' || char === '[') depth++;
+              if (char === '}' || char === ']') {
+                depth--;
+                if (depth === 0) {
+                  const afterClosing = response.indexOf('```', i);
+                  if (afterClosing !== -1 && afterClosing - i < 50) {
+                    endPos = afterClosing;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          if (endPos !== -1) {
+            jsonContent = response.slice(contentStart + 1, endPos).trim();
+          }
+        }
       }
 
       try {
@@ -448,6 +514,7 @@ export class Orchestrator {
       if (jsonArrayMatch) {
         try {
           const parsed = JSON.parse(jsonArrayMatch[0]);
+
           if (Array.isArray(parsed)) {
             for (const item of parsed) {
               if (item.tool && typeof item.tool === 'string') {
@@ -463,7 +530,8 @@ export class Orchestrator {
             }
           }
         } catch (e) {
-          console.error('[Orchestrator] Failed to parse tool array:', e);
+          const details = e instanceof Error ? e.stack || e.message : String(e);
+          verboseLogger.logMessage(`[Orchestrator] Failed to parse tool array: ${details}`, 'error');
         }
       }
 
@@ -492,6 +560,7 @@ export class Orchestrator {
       for (const objStr of potentialObjects) {
         try {
           const parsed = JSON.parse(objStr);
+
           if (parsed.tool && typeof parsed.tool === 'string') {
             toolCalls.push({
               toolName: parsed.tool,
@@ -504,7 +573,8 @@ export class Orchestrator {
         }
       }
     } catch (e) {
-      console.error('[Orchestrator] Tool extraction error:', e);
+      const details = e instanceof Error ? e.stack || e.message : String(e);
+      verboseLogger.logMessage(`[Orchestrator] Tool extraction error: ${details}`, 'error');
     }
 
     return toolCalls;

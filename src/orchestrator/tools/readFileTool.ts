@@ -19,13 +19,16 @@ export const readFileTool = createTool<ReadFileParams>({
   execute: async (params: ReadFileParams, context: AgentContext): Promise<ToolResult> => {
     try {
       if (!context.pathValidator) {
-        return {
-          success: false,
-          error: 'Path validation not available'
-        };
+        return { success: false, error: 'Path validation not available' };
       }
 
       const filePath = context.pathValidator.validate(params.path);
+
+      const forbiddenFiles = ['.env', 'package-lock.json', 'yarn.lock', 'mosaic.jsonc'];
+      if (forbiddenFiles.some(f => filePath.includes(f))) {
+        return { success: false, error: 'Access to this file is forbidden' };
+      }
+
       const content = await fs.readFile(filePath, 'utf-8');
 
       const offset = params.offset ?? 0;
@@ -50,10 +53,7 @@ export const readFileTool = createTool<ReadFileParams>({
         }
       };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to read file'
-      };
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to read file' };
     }
   }
 });

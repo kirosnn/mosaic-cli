@@ -20,33 +20,25 @@ export const listDirectoryTool: Tool = {
       const targetPath = params.path || '.';
 
       if (!context.pathValidator) {
-        return {
-          success: false,
-          error: 'Path validation not available'
-        };
+        return { success: false, error: 'Path validation not available' };
       }
 
       const dirPath = context.pathValidator.validate(targetPath);
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-      const files = entries.map(entry => ({
-        name: entry.name,
-        type: entry.isDirectory() ? 'directory' : 'file',
-        path: path.join(dirPath, entry.name)
-      }));
+      const forbidden = ['node_modules', '.env', 'package-lock.json', 'yarn.lock', 'mosaic.jsonc'];
 
-      return {
-        success: true,
-        data: {
-          path: dirPath,
-          entries: files
-        }
-      };
+      const files = entries
+        .filter(entry => !forbidden.includes(entry.name))
+        .map(entry => ({
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          path: path.join(dirPath, entry.name)
+        }));
+
+      return { success: true, data: { path: dirPath, entries: files } };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to list directory'
-      };
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to list directory' };
     }
   }
 };

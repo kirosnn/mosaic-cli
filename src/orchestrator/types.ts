@@ -112,8 +112,6 @@ export function createTool<TParams extends Record<string, any> = Record<string, 
     execute: (params: TParams, context: AgentContext) => Promise<ToolResult>;
   }
 ): Tool {
-  // We keep strong typing at call sites via TParams, but coerce to the
-  // non-generic Tool interface for storage in the registry.
   return def as unknown as Tool;
 }
 

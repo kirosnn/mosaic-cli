@@ -8,7 +8,9 @@ interface UseKeyboardShortcutsProps {
   showThemeSelector?: boolean;
   showProviderSelector?: boolean;
   showModelSelector?: boolean;
-  showRewindSelector?: boolean;
+  showUndoSelector?: boolean;
+  showIdeSelector?: boolean;
+  showApiKeyProviderSelector?: boolean;
   selectedIndex: number;
   shortcuts: any[];
   commands: any[];
@@ -18,6 +20,8 @@ interface UseKeyboardShortcutsProps {
   providerNames?: any[];
   availableModels?: Array<{ key: string; description: string; isHistory?: boolean; isSeparator?: boolean; isCustom?: boolean }>;
   userMessages?: any[];
+  detectedIDEs?: any[];
+  isStreaming?: boolean;
   onClearMessages: () => void;
   onClearInput: () => void;
   onShowShortcuts: (show: boolean) => void;
@@ -25,16 +29,21 @@ interface UseKeyboardShortcutsProps {
   onShowThemeSelector?: (show: boolean) => void;
   onShowProviderSelector?: (show: boolean) => void;
   onShowModelSelector?: (show: boolean) => void;
-  onShowRewindSelector?: (show: boolean) => void;
+  onShowUndoSelector?: (show: boolean) => void;
+  onShowIdeSelector?: (show: boolean) => void;
+  onShowApiKeyProviderSelector?: (show: boolean) => void;
   onSelectIndex: (index: number) => void;
   onSelectItem: (item: string) => void;
   onShowCtrlCMessage: (show: boolean) => void;
+  onStopStreaming?: () => void;
   onExecuteCommand?: (action: string) => void;
   onExecuteShortcut?: (action: string) => void;
   onSelectTheme?: (themeName: string) => void;
   onSelectProvider?: (providerType: string) => void;
   onSelectModel?: (model: string) => void;
-  onSelectRewind?: (messageIndex: number) => void;
+  onSelectUndo?: (messageIndex: number) => void;
+  onSelectIde?: (index: number) => void;
+  onSelectApiKeyProvider?: (providerType: string) => void;
 }
 
 export const useKeyboardShortcuts = ({
@@ -44,7 +53,9 @@ export const useKeyboardShortcuts = ({
   showThemeSelector = false,
   showProviderSelector = false,
   showModelSelector = false,
-  showRewindSelector = false,
+  showUndoSelector = false,
+  showIdeSelector = false,
+  showApiKeyProviderSelector = false,
   selectedIndex,
   shortcuts,
   commands,
@@ -54,6 +65,8 @@ export const useKeyboardShortcuts = ({
   providerNames = [],
   availableModels = [],
   userMessages = [],
+  detectedIDEs = [],
+  isStreaming = false,
   onClearMessages,
   onClearInput,
   onShowShortcuts,
@@ -61,16 +74,21 @@ export const useKeyboardShortcuts = ({
   onShowThemeSelector,
   onShowProviderSelector,
   onShowModelSelector,
-  onShowRewindSelector,
+  onShowUndoSelector,
+  onShowIdeSelector,
+  onShowApiKeyProviderSelector,
   onSelectIndex,
   onSelectItem,
   onShowCtrlCMessage,
+  onStopStreaming,
   onExecuteCommand,
   onExecuteShortcut,
   onSelectTheme,
   onSelectProvider,
   onSelectModel,
-  onSelectRewind
+  onSelectUndo,
+  onSelectIde,
+  onSelectApiKeyProvider
 }: UseKeyboardShortcutsProps) => {
   const { exit } = useApp();
   const exitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,7 +117,12 @@ export const useKeyboardShortcuts = ({
       return;
     }
 
-    if (showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showRewindSelector) {
+    if (key.escape && isStreaming && onStopStreaming) {
+      onStopStreaming();
+      return;
+    }
+
+    if (showShortcuts || showCommands || showThemeSelector || showProviderSelector || showModelSelector || showUndoSelector || showIdeSelector || showApiKeyProviderSelector) {
       let items: any[] = [];
 
       if (showShortcuts) {
@@ -108,12 +131,14 @@ export const useKeyboardShortcuts = ({
         items = filteredCommands.length > 0 ? filteredCommands : commands;
       } else if (showThemeSelector) {
         items = themeNames.map(name => ({ key: name, description: `Switch to ${name} theme` }));
-      } else if (showProviderSelector) {
+      } else if (showProviderSelector || showApiKeyProviderSelector) {
         items = providerNames.map(p => ({ key: p.type, description: p.name }));
       } else if (showModelSelector) {
         items = availableModels;
-      } else if (showRewindSelector) {
+      } else if (showUndoSelector) {
         items = userMessages.filter(m => m.msg.role === 'user');
+      } else if (showIdeSelector) {
+        items = detectedIDEs;
       }
 
       if (key.tab && showCommands && items.length > 0) {
@@ -190,6 +215,13 @@ export const useKeyboardShortcuts = ({
           }
           onSelectIndex(0);
           onClearInput();
+        } else if (showApiKeyProviderSelector && onSelectApiKeyProvider) {
+          onSelectApiKeyProvider((items[selectedIndex] as any).key);
+          if (onShowApiKeyProviderSelector) {
+            onShowApiKeyProviderSelector(false);
+          }
+          onSelectIndex(0);
+          onClearInput();
         } else if (showModelSelector && onSelectModel) {
           onSelectModel((items[selectedIndex] as any).key);
           if (onShowModelSelector) {
@@ -197,13 +229,20 @@ export const useKeyboardShortcuts = ({
           }
           onSelectIndex(0);
           onClearInput();
-        } else if (showRewindSelector && onSelectRewind) {
+        } else if (showUndoSelector && onSelectUndo) {
           const selectedItem = items[selectedIndex];
           if (selectedItem && selectedItem.originalIndex !== undefined) {
-            onSelectRewind(selectedItem.originalIndex);
+            onSelectUndo(selectedItem.originalIndex);
           }
-          if (onShowRewindSelector) {
-            onShowRewindSelector(false);
+          if (onShowUndoSelector) {
+            onShowUndoSelector(false);
+          }
+          onSelectIndex(0);
+          onClearInput();
+        } else if (showIdeSelector && onSelectIde) {
+          onSelectIde(selectedIndex);
+          if (onShowIdeSelector) {
+            onShowIdeSelector(false);
           }
           onSelectIndex(0);
           onClearInput();
@@ -217,11 +256,17 @@ export const useKeyboardShortcuts = ({
         if (onShowProviderSelector) {
           onShowProviderSelector(false);
         }
+        if (onShowApiKeyProviderSelector) {
+          onShowApiKeyProviderSelector(false);
+        }
         if (onShowModelSelector) {
           onShowModelSelector(false);
         }
-        if (onShowRewindSelector) {
-          onShowRewindSelector(false);
+        if (onShowUndoSelector) {
+          onShowUndoSelector(false);
+        }
+        if (onShowIdeSelector) {
+          onShowIdeSelector(false);
         }
         onSelectIndex(0);
       }

@@ -246,6 +246,74 @@ export const generateExecuteShellDiffLines = (command: string): DiffLine[] => {
   }];
 };
 
+export const generateFetchDiffLines = (parameters: Record<string, any>): DiffLine[] => {
+  const url = parameters.url || '';
+  const method = parameters.method || 'GET';
+  const headers = parameters.headers && typeof parameters.headers === 'object' ? parameters.headers : {};
+  const body = parameters.body;
+
+  const diffLines: DiffLine[] = [];
+
+  diffLines.push({
+    lineNumber: null,
+    content: `URL: ${url}`,
+    type: 'context'
+  });
+
+  diffLines.push({
+    lineNumber: null,
+    content: `Method: ${method}`,
+    type: 'context'
+  });
+
+  const headerEntries = Object.entries(headers);
+
+  if (headerEntries.length > 0) {
+    diffLines.push({
+      lineNumber: null,
+      content: 'Headers:',
+      type: 'context'
+    });
+
+    headerEntries.forEach(([key, value]) => {
+      diffLines.push({
+        lineNumber: null,
+        content: `  ${String(key)}: ${String(value)}`,
+        type: 'context'
+      });
+    });
+  }
+
+  if (body) {
+    const bodyString = String(body);
+    const bodyLines = bodyString.split('\n');
+
+    diffLines.push({
+      lineNumber: null,
+      content: 'Body:',
+      type: 'context'
+    });
+
+    bodyLines.forEach((line, index) => {
+      diffLines.push({
+        lineNumber: index + 1,
+        content: line,
+        type: 'add'
+      });
+    });
+
+    if (bodyLines.length > 0 && bodyLines[bodyLines.length - 1] !== '') {
+      diffLines.push({
+        lineNumber: null,
+        content: 'No newline at end of body',
+        type: 'empty'
+      });
+    }
+  }
+
+  return diffLines;
+};
+
 export const generateToolPreviewData = async (toolName: string, parameters: Record<string, any>): Promise<ToolPreviewData> => {
   let diffLines: DiffLine[] = [];
   let filePath = '';
@@ -258,7 +326,6 @@ export const generateToolPreviewData = async (toolName: string, parameters: Reco
       break;
 
     case 'update_file':
-      filePath = parameters.path;
       try {
         const oldContent = fs.readFileSync(parameters.path, 'utf-8');
 
@@ -308,6 +375,11 @@ export const generateToolPreviewData = async (toolName: string, parameters: Reco
       diffLines = generateExecuteShellDiffLines(parameters.command);
       break;
 
+    case 'fetch':
+      filePath = parameters.url || '';
+      diffLines = generateFetchDiffLines(parameters);
+      break;
+
     default:
       filePath = 'unknown';
       diffLines = [{
@@ -347,6 +419,9 @@ export const generateToolPreview = async (toolName: string, parameters: Record<s
 
     case 'execute_shell':
       return generateExecuteShellPreview(parameters.command);
+
+    case 'fetch':
+      return `Fetching URL: ${parameters.url || ''}\nMethod: ${parameters.method || 'GET'}`;
 
     default:
       return `Tool: ${toolName}\nParameters: ${JSON.stringify(parameters, null, 2)}`;

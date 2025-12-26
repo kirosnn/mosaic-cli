@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ProviderType } from '../config/providers.js';
+import { verboseLogger } from './VerboseLogger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,7 +66,8 @@ export async function fetchModelsFromAPI(): Promise<ModelsAPIResponse> {
     }
     return await response.json() as ModelsAPIResponse;
   } catch (error) {
-    console.error('Error fetching models from API:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error fetching models from API: ${details}`, 'error');
     return loadFallbackModels();
   }
 }
@@ -75,7 +77,8 @@ export function loadFallbackModels(): ModelsAPIResponse {
     const fallbackData = fs.readFileSync(FALLBACK_FILE_PATH, 'utf-8');
     return JSON.parse(fallbackData) as ModelsAPIResponse;
   } catch (error) {
-    console.error('Error loading fallback models:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error loading fallback models: ${details}`, 'error');
     return {};
   }
 }

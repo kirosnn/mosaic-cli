@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { MOSAIC_DIR, ensureMosaicDir } from './paths.js';
 import { encrypt, decrypt, isEncrypted } from './encryption.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 const SECRETS_FILE = join(MOSAIC_DIR, '.secrets.json');
 
@@ -24,7 +25,8 @@ function loadSecrets(): Secrets {
       try {
         decryptedData = decrypt(data);
       } catch (decryptError) {
-        console.error('Error decrypting secrets file:', decryptError);
+        const details = decryptError instanceof Error ? decryptError.stack || decryptError.message : String(decryptError);
+        verboseLogger.logMessage(`Error decrypting secrets file: ${details}`, 'error');
         return {};
       }
     } else {
@@ -33,7 +35,8 @@ function loadSecrets(): Secrets {
 
     return JSON.parse(decryptedData);
   } catch (error) {
-    console.error('Error reading secrets file:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error reading secrets file: ${details}`, 'error');
     return {};
   }
 }
@@ -46,7 +49,8 @@ function saveSecrets(secrets: Secrets): void {
     const encryptedData = encrypt(jsonData);
     writeFileSync(SECRETS_FILE, encryptedData, 'utf-8');
   } catch (error) {
-    console.error('Error saving secrets file:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error saving secrets file: ${details}`, 'error');
     throw error;
   }
 }

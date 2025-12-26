@@ -2,13 +2,13 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { MessageWithTools } from '../types/toolExecution.js';
 
-interface RewindSelectorProps {
+interface UndoSelectorProps {
   messages: MessageWithTools[];
   selectedIndex: number;
   theme: any;
 }
 
-const RewindSelector: React.FC<RewindSelectorProps> = ({ messages, selectedIndex, theme }) => {
+const UndoSelector: React.FC<UndoSelectorProps> = ({ messages, selectedIndex, theme }) => {
   const formatTimestamp = (index: number): string => {
     return `Message ${index + 1}`;
   };
@@ -27,7 +27,7 @@ const RewindSelector: React.FC<RewindSelectorProps> = ({ messages, selectedIndex
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box borderStyle="round" borderColor={theme.primary} paddingX={2} paddingY={1}>
-          <Text color={theme.text}>No messages to rewind to</Text>
+          <Text color={theme.text}>No messages to undo to</Text>
         </Box>
       </Box>
     );
@@ -39,7 +39,7 @@ const RewindSelector: React.FC<RewindSelectorProps> = ({ messages, selectedIndex
         <Box flexDirection="column">
           <Box marginBottom={1}>
             <Text bold color={theme.primary}>
-              Select a message to rewind to:
+              Select a message to undo to:
             </Text>
           </Box>
 
@@ -84,4 +84,4 @@ const RewindSelector: React.FC<RewindSelectorProps> = ({ messages, selectedIndex
   );
 };
 
-export default RewindSelector;
+export default UndoSelector;

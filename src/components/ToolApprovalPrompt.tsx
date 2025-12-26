@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import TextInput from 'ink-text-input';
-
-interface DiffLine {
-  lineNumber: number | null;
-  content: string;
-  type: 'add' | 'remove' | 'context' | 'empty';
-}
+import CustomTextInput from './CustomTextInput.js';
+import { DiffLine } from '../types/toolExecution.js';
 
 interface ToolApprovalPromptProps {
   toolName: string;
@@ -32,7 +27,6 @@ const ToolApprovalPrompt: React.FC<ToolApprovalPromptProps> = ({
   onModify
 }) => {
   const [selectedOption, setSelectedOption] = useState(0);
-  const [isTyping, setIsTyping] = useState(false);
   const [customInput, setCustomInput] = useState('');
 
   const toolDisplayNames: Record<string, string> = {
@@ -46,20 +40,24 @@ const ToolApprovalPrompt: React.FC<ToolApprovalPromptProps> = ({
 
   const options = [
     'Yes',
-    'Yes, allow all edits during this session',
-    'Write here what you want Mosaic to do differently.'
+    'Yes, allow all edits during this session'
   ];
 
   useInput((input, key) => {
-    if (isTyping) {
-      if (key.return) {
-        setIsTyping(false);
-        if (customInput.trim()) {
-          onModify(customInput.trim());
-        }
+    if (selectedOption === 2) {
+      if (key.return && customInput.trim()) {
+        onModify(customInput.trim());
+        return;
       } else if (key.escape) {
-        setIsTyping(false);
-        setCustomInput('');
+        if (customInput) {
+          setCustomInput('');
+        } else {
+          onReject();
+        }
+        return;
+      } else if (key.upArrow && !customInput) {
+        setSelectedOption(1);
+        return;
       }
       return;
     }
@@ -67,16 +65,14 @@ const ToolApprovalPrompt: React.FC<ToolApprovalPromptProps> = ({
     if (key.escape) {
       onReject();
     } else if (key.upArrow) {
-      setSelectedOption(prev => (prev > 0 ? prev - 1 : options.length - 1));
+      setSelectedOption(prev => (prev > 0 ? prev - 1 : 2));
     } else if (key.downArrow) {
-      setSelectedOption(prev => (prev < options.length - 1 ? prev + 1 : 0));
+      setSelectedOption(prev => (prev < 2 ? prev + 1 : 0));
     } else if (key.return) {
       if (selectedOption === 0) {
         onApprove();
       } else if (selectedOption === 1) {
         onApproveAll();
-      } else if (selectedOption === 2) {
-        setIsTyping(true);
       }
     } else if (key.tab && key.shift) {
       onApproveAll();
@@ -155,22 +151,29 @@ const ToolApprovalPrompt: React.FC<ToolApprovalPromptProps> = ({
           {options.map((option, index) => (
             <Box key={index}>
               <Text color={selectedOption === index ? theme.colors.accent : theme.colors.text}>
-                {selectedOption === index ? '  ❯ ' : '    '}{index + 1}. {option}
+                {selectedOption === index ? '  > ' : '    '}{index + 1}. {option}
               </Text>
             </Box>
           ))}
-        </Box>
-
-        {isTyping && (
           <Box>
-            <Text color={theme.colors.text}>  {'> '}</Text>
-            <TextInput
-              value={customInput}
-              onChange={setCustomInput}
-              placeholder="Type your instructions here..."
-            />
+            <Text color={selectedOption === 2 ? theme.colors.accent : theme.colors.text}>
+              {selectedOption === 2 ? '  > ' : '    '}3.{' '}
+            </Text>
+            <Text dimColor={true}>
+              <CustomTextInput
+                value={customInput}
+                onChange={setCustomInput}
+                onSubmit={(value) => {
+                  if (value.trim()) {
+                    onModify(value.trim());
+                  }
+                }}
+                placeholder="Write here what you want Mosaic to do differently."
+                focus={selectedOption === 2}
+              />
+            </Text>
           </Box>
-        )}
+        </Box>
       </Box>
 
       <Box>

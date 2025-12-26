@@ -60,7 +60,9 @@ export class RetryHandler {
         }
 
         if (!isLastAttempt) {
-          const delay = this.calculateDelay(attempt);
+          const delay = error instanceof AIError && error.statusCode === 500
+            ? 2000
+            : this.calculateDelay(attempt);
           await this.sleep(delay);
         }
       }

@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { Theme } from '../config/themes.js';
 import { ProviderConfig } from '../config/providers.js';
+import { verboseLogger } from '../utils/VerboseLogger.js';
 
 interface ChatHeaderProps {
   version: string;
@@ -35,7 +36,8 @@ const loadFormattingConfig = (): FormattingConfig => {
       return formattingCache!;
     }
   } catch (error) {
-    console.error('Error loading formatting config:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Error loading formatting config: ${details}`, 'error');
   }
 
   return { providers: {}, models: {} };

@@ -26,7 +26,7 @@ export const updateFileTool = createTool<UpdateFileParams>({
     {
       name: 'updates',
       type: 'array',
-      description: 'Array of updates to apply. Each update contains startLine (1-indexed), endLine (1-indexed), and newContent. Example: [{startLine: 1, endLine: 1, newContent: "new text"}] replaces the first line.',
+      description: 'Array of updates to apply. Each update contains startLine (1-indexed), endLine (1-indexed), and newContent.',
       required: true
     }
   ],
@@ -42,11 +42,20 @@ export const updateFileTool = createTool<UpdateFileParams>({
       const filePath = context.pathValidator.validate(params.path);
 
       const content = await fs.readFile(filePath, 'utf-8');
-      const lines = String(content || '').split('\n');
+      const hasFinalNewline = content.endsWith('\n');
 
+      const rawLines = content.split('\n');
+      const lines =
+        rawLines.length > 0 && rawLines[rawLines.length - 1] === ''
+          ? rawLines.slice(0, -1)
+          : rawLines;
+
+      const originalLines = [...lines];
       const updates = params.updates;
 
       updates.sort((a, b) => b.startLine - a.startLine);
+
+      const diffLines: Array<{ lineNumber: number | null; content: string; type: 'add' | 'remove' | 'context' }> = [];
 
       for (const update of updates) {
         if (update.startLine < 1 || update.endLine > lines.length) {
@@ -56,11 +65,57 @@ export const updateFileTool = createTool<UpdateFileParams>({
           };
         }
 
-        const newLines = String(update.newContent || '').split('\n');
+        const contextBefore = Math.max(0, update.startLine - 3);
+        const contextAfter = Math.min(originalLines.length - 1, update.endLine + 1);
+
+        for (let i = contextBefore; i < update.startLine - 1; i++) {
+          diffLines.push({
+            lineNumber: i + 1,
+            content: originalLines[i],
+            type: 'context'
+          });
+        }
+
+        for (let i = update.startLine - 1; i <= update.endLine - 1; i++) {
+          diffLines.push({
+            lineNumber: i + 1,
+            content: originalLines[i],
+            type: 'remove'
+          });
+        }
+
+        const rawNewLines = update.newContent.split('\n');
+        const newLines =
+          rawNewLines.length > 0 && rawNewLines[rawNewLines.length - 1] === ''
+            ? rawNewLines.slice(0, -1)
+            : rawNewLines;
+
+        for (let i = 0; i < newLines.length; i++) {
+          diffLines.push({
+            lineNumber: update.startLine + i,
+            content: newLines[i],
+            type: 'add'
+          });
+        }
+
+        for (let i = update.endLine; i <= contextAfter; i++) {
+          if (i < originalLines.length) {
+            diffLines.push({
+              lineNumber: i + 1,
+              content: originalLines[i],
+              type: 'context'
+            });
+          }
+        }
+
         lines.splice(update.startLine - 1, update.endLine - update.startLine + 1, ...newLines);
       }
 
-      const newContent = lines.join('\n');
+      let newContent = lines.join('\n');
+      if (hasFinalNewline) {
+        newContent += '\n';
+      }
+
       await fs.writeFile(filePath, newContent, 'utf-8');
 
       return {
@@ -68,7 +123,8 @@ export const updateFileTool = createTool<UpdateFileParams>({
         data: {
           path: filePath,
           updatesApplied: updates.length,
-          totalLines: lines.length
+          totalLines: lines.length,
+          diffLines
         }
       };
     } catch (error) {

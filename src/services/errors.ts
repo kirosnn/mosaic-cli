@@ -11,6 +11,7 @@ export enum AIErrorType {
   PARSING_ERROR = 'PARSING_ERROR',
   MODEL_NOT_FOUND = 'MODEL_NOT_FOUND',
   CONTEXT_LENGTH_EXCEEDED = 'CONTEXT_LENGTH_EXCEEDED',
+  CONFIG_ERROR = 'CONFIG_ERROR',
   OLLAMA_NOT_RUNNING = 'OLLAMA_NOT_RUNNING',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'
 }
@@ -52,30 +53,40 @@ export class AIError extends Error {
     let retryable = false;
     let message = errorBody?.error?.message || errorBody?.message || response.statusText || 'Unknown error';
 
+    const lowerMessage = message.toLowerCase();
+
     switch (statusCode) {
       case 401:
       case 403:
         type = AIErrorType.AUTHENTICATION_ERROR;
         retryable = false;
         break;
+
       case 429:
         type = AIErrorType.RATE_LIMIT_ERROR;
         retryable = true;
         break;
+
       case 400:
-        if (message.toLowerCase().includes('context') || message.toLowerCase().includes('token')) {
+        if (lowerMessage.includes('context') || lowerMessage.includes('token')) {
           type = AIErrorType.CONTEXT_LENGTH_EXCEEDED;
-        } else if (message.toLowerCase().includes('model')) {
+        } else if (lowerMessage.includes('model')) {
           type = AIErrorType.MODEL_NOT_FOUND;
         } else {
           type = AIErrorType.INVALID_REQUEST_ERROR;
         }
         retryable = false;
         break;
+
       case 404:
-        type = AIErrorType.MODEL_NOT_FOUND;
+        if (lowerMessage.includes('endpoint') || lowerMessage.includes('not supported')) {
+          type = AIErrorType.CONFIG_ERROR;
+        } else {
+          type = AIErrorType.MODEL_NOT_FOUND;
+        }
         retryable = false;
         break;
+
       case 500:
       case 502:
       case 503:
@@ -83,6 +94,7 @@ export class AIError extends Error {
         type = AIErrorType.API_ERROR;
         retryable = true;
         break;
+
       default:
         type = AIErrorType.API_ERROR;
         retryable = statusCode >= 500;
@@ -101,11 +113,14 @@ export class AIError extends Error {
 
   static fromNetworkError(error: unknown, provider: string, model?: string): AIError {
     const message = error instanceof Error ? error.message : String(error);
-    const isTimeout = message.toLowerCase().includes('timeout') || message.toLowerCase().includes('aborted');
-    const isConnectionRefused = message.toLowerCase().includes('econnrefused') ||
-      message.toLowerCase().includes('connection refused') ||
-      message.toLowerCase().includes('fetch failed');
-    const isUnauthorized = message.toLowerCase().includes('unauthorized');
+    const lower = message.toLowerCase();
+
+    const isTimeout = lower.includes('timeout') || lower.includes('aborted');
+    const isConnectionRefused =
+      lower.includes('econnrefused') ||
+      lower.includes('connection refused') ||
+      lower.includes('fetch failed');
+    const isUnauthorized = lower.includes('unauthorized');
 
     if (provider === 'Ollama' && isUnauthorized) {
       const signinMatch = message.match(/signin_url":"([^"]+)"/);

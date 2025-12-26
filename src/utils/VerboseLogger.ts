@@ -77,7 +77,7 @@ export class VerboseLogger {
   }
 
   logMessage(message: string, color: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
-    if (!this.enabled) return;
+    if (!this.enabled && color !== 'error') return;
 
     const timestamp = new Date().toLocaleTimeString();
     const colorFn = {
@@ -90,3 +90,5 @@ export class VerboseLogger {
     console.log(colorFn(`[${timestamp}] ${message}`));
   }
 }
+
+export const verboseLogger = new VerboseLogger(false);

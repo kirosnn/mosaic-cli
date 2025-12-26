@@ -1,6 +1,6 @@
 # Mosaic CLI
 
-Version 0.0.4.40
+Version 0.0.5.00
 
 Mosaic is a command-line interface for interacting with large language models directly from your terminal. It supports multiple AI providers and provides a straightforward way to integrate AI assistance into your workflow.
 
@@ -16,7 +16,10 @@ The interface is text-based and designed to work in any terminal environment. Re
 
 - **Multiple Provider Support**: Connect to OpenAI, Anthropic, OpenRouter, Ollama, or any OpenAI-compatible API
 - **Terminal Interface**: Built with React and Ink for a responsive terminal UI
-- **Markdown Rendering**: Code blocks, lists, and formatting are properly displayed in the terminal 
+- **Markdown Rendering**: Code blocks, lists, and formatting are properly displayed in the terminal
+- **IDE Integration**: Automatically detect and interact with VSCode, Cursor, or Windsurf (Windows only)
+- **Context References**: Include files or directories in your prompts using the `#` symbol (e.g., `#src/file.ts`)
+- **Undo/Redo System**: Restore file modifications to previous conversation states with snapshot functionality
 - **Customizable System Prompts**: Define AI behavior using a markdown file with support for dynamic placeholders
 - **Secure Storage**: API keys are encrypted and stored locally
 - **Theme Support**: Several color schemes available to match your terminal preferences
@@ -106,6 +109,60 @@ While using Mosaic, the following keyboard shortcuts are available:
 - `Ctrl+C` (twice) - Exit the application
 - `Ctrl+L` - Clear the current conversation history
 - `Ctrl+U` - Clear the current input line
+
+## IDE Integration
+
+Mosaic can automatically detect and interact with your running IDEs (currently Windows only). Supported IDEs include:
+- Visual Studio Code
+- Cursor
+- Windsurf
+
+### Using IDE Integration
+
+1. Open your preferred IDE (VSCode, Cursor, or Windsurf)
+2. Use the `/ide` command in Mosaic to detect running IDEs
+3. Select the IDE instance you want to interact with
+4. Mosaic can now open files directly in your selected IDE when the AI suggests modifications
+
+This feature streamlines your workflow by allowing seamless transitions between the terminal and your code editor.
+
+## Context References
+
+You can include files or directories in your conversation by using the `#` symbol followed by a file path:
+
+```
+Can you review #src/index.tsx and suggest improvements?
+```
+
+```
+Analyze the structure of #src/components/ directory
+```
+
+When you reference a file, its content is automatically included in the context sent to the AI. For directories, Mosaic will recursively read the contents (up to a maximum depth) and include them in the conversation.
+
+This is particularly useful for:
+- Code reviews
+- Getting AI assistance with specific files
+- Analyzing project structure
+- Debugging issues in particular modules
+
+## Undo/Redo System
+
+Mosaic includes a snapshot-based undo/redo system that allows you to restore file modifications to previous states during a conversation.
+
+### How It Works
+
+- Mosaic automatically creates snapshots of file states before modifications
+- You can restore to any previous point in the conversation
+- The redo functionality allows you to move forward again if needed
+- Snapshots are optimized to avoid excessive memory usage (max 50 snapshots)
+
+### Using Undo/Redo
+
+Use the undo/redo functionality through the command menu (`/` key) to navigate through file modification history. This is particularly useful when:
+- Testing different implementations
+- Recovering from unwanted changes
+- Exploring alternative solutions
 
 ## Development
 

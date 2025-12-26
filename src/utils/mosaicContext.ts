@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { verboseLogger } from './VerboseLogger.js';
 
 const MOSAIC_FILE = 'MOSAIC.md';
 const MOSAIC_CONFIG_FILE = 'mosaic.jsonc';
@@ -84,7 +85,8 @@ export function saveWorkspaceConfig(config: WorkspaceConfig, workingDirectory?: 
 
     fs.writeFileSync(configPath, lines.join('\n'), 'utf-8');
   } catch (error) {
-    console.error('Failed to save workspace config:', error);
+    const details = error instanceof Error ? error.stack || error.message : String(error);
+    verboseLogger.logMessage(`Failed to save workspace config: ${details}`, 'error');
   }
 }
 

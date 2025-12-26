@@ -72,8 +72,6 @@ ensureMosaicDir();
 
 updateProvidersWithLatestModels().catch(() => {});
 
-clearTerminal();
-
 if (verboseMode) {
   console.log('[Mosaic] Verbose mode enabled. You will see detailed execution logs.\n');
 }

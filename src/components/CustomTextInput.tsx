@@ -6,6 +6,7 @@ interface CustomTextInputProps {
   placeholder?: string;
   focus?: boolean;
   showCursor?: boolean;
+  mask?: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
   onUpArrow?: () => void;
@@ -17,16 +18,37 @@ const CustomTextInput: React.FC<CustomTextInputProps> = ({
   placeholder = '',
   focus = true,
   showCursor = true,
+  mask,
   onChange,
   onSubmit,
   onUpArrow,
   onDownArrow
 }) => {
   const [cursorOffset, setCursorOffset] = useState(value.length);
+  const [cursorVisible, setCursorVisible] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
 
   useEffect(() => {
     setCursorOffset(Math.min(value.length, cursorOffset));
   }, [value]);
+
+  useEffect(() => {
+    if (!focus || !showCursor) return;
+
+    if (isTyping) {
+      setCursorVisible(true);
+      const typingTimeout = setTimeout(() => {
+        setIsTyping(false);
+      }, 500);
+      return () => clearTimeout(typingTimeout);
+    }
+
+    const interval = setInterval(() => {
+      setCursorVisible(prev => !prev);
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [focus, showCursor, isTyping]);
 
   useInput((input, key) => {
     if (!focus) return;
@@ -52,17 +74,20 @@ const CustomTextInput: React.FC<CustomTextInputProps> = ({
     }
 
     if (key.leftArrow) {
+      setIsTyping(true);
       setCursorOffset(Math.max(0, cursorOffset - 1));
       return;
     }
 
     if (key.rightArrow) {
+      setIsTyping(true);
       setCursorOffset(Math.min(value.length, cursorOffset + 1));
       return;
     }
 
     if (key.backspace || key.delete) {
       if (cursorOffset > 0) {
+        setIsTyping(true);
         const newValue = value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
         onChange(newValue);
         setCursorOffset(cursorOffset - 1);
@@ -71,29 +96,31 @@ const CustomTextInput: React.FC<CustomTextInputProps> = ({
     }
 
     if (input && !key.ctrl && !key.meta && !key.escape) {
+      setIsTyping(true);
       const newValue = value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
       onChange(newValue);
       setCursorOffset(cursorOffset + input.length);
     }
   }, { isActive: focus });
 
-  const displayValue = value || placeholder;
+  const maskedValue = mask ? mask.repeat(value.length) : value;
+  const displayValue = maskedValue || placeholder;
   const isPlaceholder = !value && !!placeholder;
 
   if (!showCursor || !focus) {
     return <Text dimColor={isPlaceholder}>{displayValue}</Text>;
   }
 
-  const beforeCursor = value.slice(0, cursorOffset);
-  const cursorChar = value[cursorOffset] || ' ';
-  const afterCursor = value.slice(cursorOffset + 1);
+  const beforeCursor = maskedValue.slice(0, cursorOffset);
+  const cursorChar = maskedValue[cursorOffset] || ' ';
+  const afterCursor = maskedValue.slice(cursorOffset + 1);
 
   if (value.length === 0) {
     return (
       <>
-        <Text dimColor>{placeholder.slice(0, 1)}</Text>
-        <Text inverse>{placeholder[1] || ' '}</Text>
-        <Text dimColor>{placeholder.slice(2)}</Text>
+        <Text dimColor>{placeholder}</Text>
+        {cursorVisible && <Text inverse>{' '}</Text>}
+        {!cursorVisible && <Text>{' '}</Text>}
       </>
     );
   }
@@ -101,7 +128,8 @@ const CustomTextInput: React.FC<CustomTextInputProps> = ({
   return (
     <>
       <Text>{beforeCursor}</Text>
-      <Text inverse>{cursorChar}</Text>
+      {cursorVisible && <Text inverse>{cursorChar}</Text>}
+      {!cursorVisible && <Text>{cursorChar}</Text>}
       <Text>{afterCursor}</Text>
     </>
   );

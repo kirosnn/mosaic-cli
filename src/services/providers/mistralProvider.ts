@@ -80,12 +80,102 @@ export async function sendToMistralStream(params: {
   maxCompletionTokens?: number;
   onDelta: (delta: string) => void;
 }): Promise<AIResponse> {
-  const { onDelta, ...rest } = params;
-  const response = await sendToMistral(rest);
+  const { config, apiKey, messages, maxCompletionTokens, onDelta } = params;
 
-  if (response.content) {
-    onDelta(response.content);
+  if (!apiKey) {
+    throw AIError.missingApiKey('Mistral');
   }
 
-  return response;
+  let response: Response;
+  try {
+    response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: messages,
+        stream: true,
+        ...(maxCompletionTokens && { max_tokens: maxCompletionTokens })
+      })
+    });
+  } catch (error) {
+    throw AIError.fromNetworkError(error, 'Mistral', config.model);
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({})) as MistralResponse;
+    throw AIError.fromResponse(response, 'Mistral', config.model, errorData);
+  }
+
+  if (!response.body) {
+    throw new AIError({
+      type: AIErrorType.API_ERROR,
+      message: 'Mistral stream response has no body',
+      provider: 'Mistral',
+      model: config.model,
+      retryable: true
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = '';
+  let usage: any = undefined;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+
+          if (data === '[DONE]') {
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content;
+
+            if (delta) {
+              fullContent += delta;
+              onDelta(delta);
+            }
+
+            if (parsed.usage) {
+              usage = parsed.usage;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!fullContent) {
+    throw new AIError({
+      type: AIErrorType.API_ERROR,
+      message: 'Mistral returned empty response',
+      provider: 'Mistral',
+      model: config.model,
+      retryable: true
+    });
+  }
+
+  return {
+    content: fullContent,
+    usage
+  };
 }

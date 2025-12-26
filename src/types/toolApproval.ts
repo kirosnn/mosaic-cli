@@ -20,7 +20,8 @@ export const TOOLS_REQUIRING_APPROVAL = [
   'update_file',
   'delete_file',
   'create_directory',
-  'execute_shell'
+  'execute_shell',
+  'fetch'
 ];
 
 export const needsApproval = (toolName: string): boolean => {

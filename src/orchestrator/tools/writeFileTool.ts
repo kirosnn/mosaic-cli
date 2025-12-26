@@ -72,8 +72,7 @@ export const writeFileTool = createTool<WriteFileParams>({
         const dirPath = path.dirname(filePath);
         try {
           await fs.mkdir(dirPath, { recursive: true });
-        } catch (mkdirError) {
-        }
+        } catch {}
       }
 
       try {
@@ -82,19 +81,29 @@ export const writeFileTool = createTool<WriteFileParams>({
           success: false,
           error: 'File already exists. Use update_file tool to modify existing files.'
         };
-      } catch {
-      }
+      } catch {}
 
       await fs.writeFile(filePath, params.content, 'utf-8');
 
-      const lines = String(params.content || '').split('\n').length;
+      const rawLines = params.content.split('\n');
+      const lines =
+        rawLines.length > 0 && rawLines[rawLines.length - 1] === ''
+          ? rawLines.slice(0, -1)
+          : rawLines;
+
+      const diffLines = lines.map((line, index) => ({
+        lineNumber: index + 1,
+        content: line,
+        type: 'add' as const
+      }));
 
       return {
         success: true,
         data: {
           path: filePath,
           bytesWritten: Buffer.byteLength(params.content, 'utf-8'),
-          lines: lines
+          lines: lines.length,
+          diffLines
         }
       };
     } catch (error) {
